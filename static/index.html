@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Expenses</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💸</text></svg>" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="loginView" class="login-view">
+  <form id="loginForm" class="login-card" autocomplete="off">
+    <div class="login-icon">💸</div>
+    <h1>Expenses</h1>
+    <input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" required />
+    <button type="submit" class="add-btn">Unlock</button>
+    <p id="loginError" class="login-error" hidden></p>
+  </form>
+</div>
+
+<div id="appView" class="app" hidden>
+
+  <header class="topbar">
+    <h1 id="pageTitle">Home</h1>
+    <button id="logoutBtn" class="icon-btn" aria-label="Log out" type="button">⎋</button>
+  </header>
+
+  <!-- ---------------- Home tab ---------------- -->
+  <main id="homeTab" class="tab-panel">
+
+    <div class="month-nav-row">
+      <button id="prevMonth" class="icon-btn" aria-label="Previous month" type="button">‹</button>
+      <span id="monthLabel" class="month-label">August 2026</span>
+      <button id="nextMonth" class="icon-btn" aria-label="Next month" type="button">›</button>
+    </div>
+
+    <section class="hero">
+      <div class="hero-value" id="totalValue">$0.00</div>
+      <div class="hero-caption">spent this month</div>
+    </section>
+
+    <section class="chart-card" id="chartCard" hidden>
+      <h2 class="card-title">By category</h2>
+      <div id="chart" class="chart"></div>
+    </section>
+
+    <section class="form-card">
+      <form id="expenseForm" autocomplete="off">
+        <div class="row row-amount">
+          <span class="currency">$</span>
+          <input id="amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" required />
+        </div>
+        <input id="description" type="text" placeholder="What was it for?" required maxlength="200" />
+        <div class="row row-meta">
+          <select id="category" required>
+            <option value="Food">🍔 Food</option>
+            <option value="Transport">🚌 Transport</option>
+            <option value="Shopping">🛍️ Shopping</option>
+            <option value="Entertainment">🎬 Entertainment</option>
+            <option value="Health">💊 Health</option>
+            <option value="Housing">🏠 Housing</option>
+            <option value="Utilities">💡 Utilities</option>
+            <option value="Other">📦 Other</option>
+          </select>
+          <input id="date" type="date" required />
+        </div>
+        <button type="submit" class="add-btn">Add expense</button>
+      </form>
+    </section>
+
+    <section class="list-card">
+      <div id="emptyState" class="empty-state" hidden>
+        <p>No expenses yet.</p>
+        <p class="muted">Add your first one above — it takes five seconds.</p>
+      </div>
+      <div id="expenseList"></div>
+    </section>
+
+  </main>
+
+  <!-- ---------------- Insights tab ---------------- -->
+  <main id="insightsTab" class="tab-panel" hidden>
+
+    <section class="chart-card">
+      <h2 class="card-title">Monthly spending</h2>
+      <div id="trendChart" class="trend-chart"></div>
+    </section>
+
+    <section class="stat-pair">
+      <div class="stat-tile">
+        <div class="stat-tile-value" id="weekdayTotal">$0.00</div>
+        <div class="stat-tile-label">Weekdays <span class="muted">(last 3mo)</span></div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-tile-value" id="weekendTotal">$0.00</div>
+        <div class="stat-tile-label">Weekends <span class="muted">(last 3mo)</span></div>
+      </div>
+    </section>
+
+    <section class="chart-card">
+      <h2 class="card-title">Spending by day of week</h2>
+      <div id="dowChart" class="dow-chart"></div>
+    </section>
+
+  </main>
+
+  <!-- ---------------- Budgets tab ---------------- -->
+  <main id="budgetsTab" class="tab-panel" hidden>
+    <section class="chart-card budgets-card">
+      <h2 class="card-title">Monthly budgets</h2>
+      <p class="card-subtitle">Set a monthly limit per category to get flagged when you're close to or over it.</p>
+      <div id="budgetList" class="budget-list"></div>
+    </section>
+  </main>
+
+  <!-- ---------------- Feedback tab ---------------- -->
+  <main id="feedbackTab" class="tab-panel" hidden>
+    <section class="form-card">
+      <form id="feedbackForm" autocomplete="off">
+        <div class="kind-toggle" id="feedbackKindToggle">
+          <button type="button" class="kind-btn active" data-kind="bug">🐛 Bug</button>
+          <button type="button" class="kind-btn" data-kind="feature">✨ Feature</button>
+        </div>
+        <textarea id="feedbackText" placeholder="What's broken, or what would help?" required maxlength="1000" rows="3"></textarea>
+        <button type="submit" class="add-btn">Add</button>
+      </form>
+    </section>
+
+    <section class="list-card">
+      <div id="feedbackEmptyState" class="empty-state" hidden>
+        <p>Nothing logged yet.</p>
+        <p class="muted">Jot down a bug or idea above whenever it comes to mind.</p>
+      </div>
+      <div id="feedbackList"></div>
+    </section>
+  </main>
+
+  <nav class="tab-bar">
+    <button class="tab-btn" data-tab="home" type="button">
+      <span class="tab-icon">🏠</span><span class="tab-label">Home</span>
+    </button>
+    <button class="tab-btn" data-tab="insights" type="button">
+      <span class="tab-icon">📈</span><span class="tab-label">Insights</span>
+    </button>
+    <button class="tab-btn" data-tab="budgets" type="button">
+      <span class="tab-icon">🎯</span><span class="tab-label">Budgets</span>
+    </button>
+    <button class="tab-btn" data-tab="feedback" type="button">
+      <span class="tab-icon">📝</span><span class="tab-label">Feedback</span>
+    </button>
+  </nav>
+
+</div>
+
+<div id="tooltip" class="viz-tooltip" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
