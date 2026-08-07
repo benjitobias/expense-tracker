@@ -35,6 +35,7 @@ PHOTO_EXTENSION_BY_CONTENT_TYPE = {
     "image/png": ".png",
     "image/webp": ".webp",
     "image/gif": ".gif",
+    "application/pdf": ".pdf",
 }
 
 
@@ -59,12 +60,13 @@ def _photos_for_expenses(db: sqlite3.Connection, expense_ids: list[int]) -> dict
         return {}
     placeholders = ",".join("?" * len(expense_ids))
     rows = db.execute(
-        f"SELECT id, expense_id FROM expense_photos WHERE expense_id IN ({placeholders}) ORDER BY id",
+        f"SELECT id, expense_id, content_type FROM expense_photos "
+        f"WHERE expense_id IN ({placeholders}) ORDER BY id",
         expense_ids,
     ).fetchall()
     by_expense: dict[int, list[dict]] = {}
     for r in rows:
-        by_expense.setdefault(r["expense_id"], []).append({"id": r["id"]})
+        by_expense.setdefault(r["expense_id"], []).append({"id": r["id"], "content_type": r["content_type"]})
     return by_expense
 
 
@@ -276,7 +278,7 @@ async def upload_expense_photos(
     ).fetchone()["n"]
     if current_count + len(files) > MAX_PHOTOS_PER_EXPENSE:
         raise HTTPException(
-            status_code=400, detail=f"An expense can have at most {MAX_PHOTOS_PER_EXPENSE} photos"
+            status_code=400, detail=f"An expense can have at most {MAX_PHOTOS_PER_EXPENSE} attachments"
         )
 
     # Validate and read everything up front so a bad file in the batch
@@ -284,10 +286,13 @@ async def upload_expense_photos(
     to_save: list[tuple[str, bytes]] = []
     for file in files:
         if file.content_type not in PHOTO_EXTENSION_BY_CONTENT_TYPE:
-            raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {file.content_type}. Use a photo (JPEG/PNG/WebP/GIF) or a PDF.",
+            )
         data = await file.read()
         if len(data) > MAX_PHOTO_BYTES:
-            raise HTTPException(status_code=400, detail="Each photo must be 5MB or smaller")
+            raise HTTPException(status_code=400, detail="Each file must be 5MB or smaller")
         to_save.append((file.content_type, data))
 
     created = []
@@ -301,7 +306,7 @@ async def upload_expense_photos(
             "VALUES (?, ?, ?, ?, ?)",
             (expense_id, user.id, filename, content_type, created_at),
         )
-        created.append({"id": cur.lastrowid})
+        created.append({"id": cur.lastrowid, "content_type": content_type})
     db.commit()
     return created
 
@@ -322,6 +327,27 @@ def get_expense_photo(
     if not row or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="Photo not found")
     return FileResponse(path, media_type=row["content_type"])
+
+
+@app.delete("/api/expenses/{expense_id}/photos/{photo_id}", status_code=204)
+def delete_expense_photo(
+    expense_id: int,
+    photo_id: int,
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    row = db.execute(
+        "SELECT filename FROM expense_photos WHERE id = ? AND expense_id = ? AND user_id = ?",
+        (photo_id, expense_id, user.id),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    db.execute("DELETE FROM expense_photos WHERE id = ?", (photo_id,))
+    db.commit()
+    path = os.path.join(database.uploads_dir(), row["filename"])
+    if os.path.isfile(path):
+        os.remove(path)
+    return Response(status_code=204)
 
 
 # ------------------------------------------------------------- budgets ----

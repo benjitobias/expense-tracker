@@ -773,16 +773,65 @@ body {
   resize: vertical;
 }
 
-.optional-fields-body input[type="file"] {
-  font-size: 13px;
-  color: var(--text-secondary);
+.file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
+
+.file-input-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.file-input-label:hover { background: var(--gridline); }
+.file-input-label:active { transform: translateY(1px); }
 
 .file-input-hint {
   font-size: 12px;
   color: var(--text-muted);
   margin: 0;
 }
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.form-actions .add-btn { flex: 1; }
+
+.secondary-btn {
+  padding: 13px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondary-btn:hover { background: var(--gridline); }
+.secondary-btn:active { transform: translateY(1px); }
+
+.form-card .card-title { margin-bottom: 14px; }
 
 input, select {
   font-family: inherit;
@@ -833,7 +882,11 @@ input, select {
   gap: 12px;
   padding: 10px 0;
   border-bottom: 1px solid var(--gridline);
+  cursor: pointer;
+  border-radius: 8px;
 }
+
+.expense-row:hover { background: var(--surface-2); }
 
 .day-group .expense-row:last-child { border-bottom: none; }
 
@@ -872,8 +925,13 @@ input, select {
 
 .expense-photos {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 6px;
+}
+
+.expense-photo {
+  position: relative;
 }
 
 .expense-photo-thumb {
@@ -884,6 +942,32 @@ input, select {
   border: 1px solid var(--border);
   display: block;
 }
+
+.expense-photo-thumb-doc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-1);
+  font-size: 18px;
+}
+
+.photo-remove-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: var(--text-primary);
+  color: var(--surface-1);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.photo-remove-btn:hover { background: var(--danger); }
 
 .expense-amount {
   font-size: 14px;

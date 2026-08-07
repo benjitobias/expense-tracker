@@ -119,12 +119,16 @@ the legacy single-password → multi-user migration path.
   can be budgeted just like the built-ins, and there's no way to rename or
   remove one once added (add a fresh one and stop using the old one instead).
 - Expenses can optionally record where the purchase was made, a free-text
-  note, and up to 5 photos (5MB each; jpeg/png/webp/gif) — all tucked behind
-  a "+ Note, photo, or location" disclosure on the add-expense form since
-  they're rarely needed. None of these are used in charts/filters, just
-  shown on the expense itself. Photos are saved to disk under
-  `<dirname of DB_PATH>/uploads` (e.g. `/data/uploads`), so they're covered
-  by the same `-v expenses-data:/data` volume as the database — no separate
-  volume needed, but also no external backup unless that volume is backed
-  up. There's no way to remove a single photo from an expense short of
-  deleting the whole expense.
+  note, and up to 5 attachments (5MB each; JPEG/PNG/WebP/GIF or PDF) — all
+  tucked behind a "+ Note, photo, or location" disclosure on the add-expense
+  form since they're rarely needed. None of these are used in charts/
+  filters, just shown on the expense itself. Attachments are saved to disk
+  under `<dirname of DB_PATH>/uploads` (e.g. `/data/uploads`), so they're
+  covered by the same `-v expenses-data:/data` volume as the database — no
+  separate volume needed, but also no external backup unless that volume is
+  backed up. Individual attachments can be removed without deleting the
+  whole expense.
+- Tapping an expense row opens it for editing (amount, description,
+  category, date, location, note, attachments); tapping the delete button
+  deletes it instead. Deleting an expense or an attachment always asks for
+  confirmation first.

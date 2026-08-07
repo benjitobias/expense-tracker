@@ -63,6 +63,7 @@
     </section>
 
     <section class="form-card">
+      <h2 id="formTitle" class="card-title" hidden>Edit expense</h2>
       <form id="expenseForm" autocomplete="off">
         <div class="row row-amount">
           <span class="currency">₪</span>
@@ -83,16 +84,21 @@
           </select>
           <input id="date" type="date" required />
         </div>
-        <details class="optional-fields">
+        <details id="optionalFields" class="optional-fields">
           <summary>+ Note, photo, or location</summary>
           <div class="optional-fields-body">
             <input id="location" type="text" placeholder="📍 Where?" maxlength="200" />
             <textarea id="note" placeholder="📝 Add a note" maxlength="1000" rows="2"></textarea>
-            <input id="photos" type="file" accept="image/*" multiple />
+            <div id="editPhotosList" class="expense-photos" hidden></div>
+            <label for="photos" class="file-input-label">📎 Add photos or documents</label>
+            <input id="photos" type="file" accept="image/*,application/pdf" multiple class="file-input-hidden" />
             <p id="photosHint" class="file-input-hint" hidden></p>
           </div>
         </details>
-        <button type="submit" class="add-btn">Add expense</button>
+        <div class="form-actions">
+          <button type="submit" id="submitExpenseBtn" class="add-btn">Add expense</button>
+          <button type="button" id="cancelEditBtn" class="secondary-btn" hidden>Cancel</button>
+        </div>
       </form>
     </section>
 

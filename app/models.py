@@ -28,6 +28,7 @@ class ExpenseIn(BaseModel):
 
 class PhotoOut(BaseModel):
     id: int
+    content_type: str
 
 
 class ExpenseOut(ExpenseIn):

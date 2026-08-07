@@ -14,6 +14,8 @@
 
   let customCategories = [];
   let lastCategoryValue = 'Food';
+  let currentMonthExpenses = [];
+  let editingExpenseId = null;
 
   const THEME_ORDER = ['system', 'light', 'dark'];
   const THEME_ICON = { system: '🌗', light: '☀️', dark: '🌙' };
@@ -46,15 +48,20 @@
     totalValue: document.getElementById('totalValue'),
     chartCard: document.getElementById('chartCard'),
     chart: document.getElementById('chart'),
+    formTitle: document.getElementById('formTitle'),
     form: document.getElementById('expenseForm'),
     amount: document.getElementById('amount'),
     description: document.getElementById('description'),
     location: document.getElementById('location'),
     note: document.getElementById('note'),
+    optionalFields: document.getElementById('optionalFields'),
+    editPhotosList: document.getElementById('editPhotosList'),
     photos: document.getElementById('photos'),
     photosHint: document.getElementById('photosHint'),
     category: document.getElementById('category'),
     date: document.getElementById('date'),
+    submitExpenseBtn: document.getElementById('submitExpenseBtn'),
+    cancelEditBtn: document.getElementById('cancelEditBtn'),
     emptyState: document.getElementById('emptyState'),
     expenseList: document.getElementById('expenseList'),
 
@@ -296,10 +303,27 @@
   async function loadHome() {
     els.monthLabel.textContent = `${MONTH_NAMES[viewDate.getMonth()]} ${viewDate.getFullYear()}`;
     const monthExpenses = await api(`/api/expenses?month=${monthKey(viewDate)}`);
+    currentMonthExpenses = monthExpenses;
     const total = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
     els.totalValue.textContent = currency(total);
     renderChart(monthExpenses);
     renderList(monthExpenses);
+  }
+
+  function attachmentHtml(expenseId, photo, removable) {
+    const url = `/api/expenses/${expenseId}/photos/${photo.id}`;
+    const isPdf = photo.content_type === 'application/pdf';
+    const thumb = isPdf
+      ? `<div class="expense-photo-thumb expense-photo-thumb-doc">📄</div>`
+      : `<img class="expense-photo-thumb" src="${url}" alt="Attachment" loading="lazy" />`;
+    const removeBtn = removable
+      ? `<button type="button" class="photo-remove-btn" data-expense-id="${expenseId}" data-photo-id="${photo.id}" aria-label="Delete photo">×</button>`
+      : '';
+    return `
+      <div class="expense-photo">
+        <a href="${url}" target="_blank" rel="noopener">${thumb}</a>
+        ${removeBtn}
+      </div>`;
   }
 
   function renderChart(monthExpenses) {
@@ -351,11 +375,9 @@
 
       const rows = items.map(e => {
         const meta = CATEGORIES[e.category] || CUSTOM_CATEGORY_META;
-        const photosHtml = e.photos && e.photos.length ? `
-              <div class="expense-photos">${e.photos.map(p => `
-                <a href="/api/expenses/${e.id}/photos/${p.id}" target="_blank" rel="noopener">
-                  <img class="expense-photo-thumb" src="/api/expenses/${e.id}/photos/${p.id}" alt="Receipt photo" loading="lazy" />
-                </a>`).join('')}</div>` : '';
+        const photosHtml = e.photos && e.photos.length
+          ? `<div class="expense-photos">${e.photos.map(p => attachmentHtml(e.id, p, false)).join('')}</div>`
+          : '';
         return `
           <div class="expense-row" data-id="${e.id}">
             <span class="cat-dot" style="background:var(${meta.color})"></span>
@@ -408,7 +430,84 @@
   els.photos.addEventListener('change', () => {
     const n = els.photos.files.length;
     els.photosHint.hidden = n === 0;
-    els.photosHint.textContent = n === 1 ? `📷 ${els.photos.files[0].name}` : `📷 ${n} photos selected`;
+    els.photosHint.textContent = n === 1 ? `📎 ${els.photos.files[0].name}` : `📎 ${n} files selected`;
+  });
+
+  // -------------------------------------------------------- edit mode ----
+
+  function renderEditPhotos(expense) {
+    const photos = expense.photos || [];
+    if (photos.length === 0) {
+      els.editPhotosList.hidden = true;
+      els.editPhotosList.innerHTML = '';
+      return;
+    }
+    els.editPhotosList.hidden = false;
+    els.editPhotosList.innerHTML = photos.map(p => attachmentHtml(expense.id, p, true)).join('');
+  }
+
+  function enterEditMode(id) {
+    const expense = currentMonthExpenses.find(e => e.id === id);
+    if (!expense) return;
+
+    editingExpenseId = id;
+    els.amount.value = expense.amount;
+    els.description.value = expense.description;
+    els.date.value = expense.date;
+    els.location.value = expense.location || '';
+    els.note.value = expense.note || '';
+    els.photos.value = '';
+    els.photosHint.hidden = true;
+    populateCategorySelect(expense.category);
+    renderEditPhotos(expense);
+
+    if (expense.location || expense.note || (expense.photos && expense.photos.length)) {
+      els.optionalFields.open = true;
+    }
+
+    els.formTitle.hidden = false;
+    els.submitExpenseBtn.textContent = 'Save changes';
+    els.cancelEditBtn.hidden = false;
+
+    els.form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    els.amount.focus();
+  }
+
+  function exitEditMode() {
+    editingExpenseId = null;
+    els.form.reset();
+    els.date.valueAsDate = new Date();
+    lastCategoryValue = els.category.value;
+    els.photosHint.hidden = true;
+    els.editPhotosList.hidden = true;
+    els.editPhotosList.innerHTML = '';
+    els.optionalFields.open = false;
+    els.formTitle.hidden = true;
+    els.submitExpenseBtn.textContent = 'Add expense';
+    els.cancelEditBtn.hidden = true;
+  }
+
+  els.cancelEditBtn.addEventListener('click', exitEditMode);
+
+  els.editPhotosList.addEventListener('click', async (evt) => {
+    const btn = evt.target.closest('.photo-remove-btn');
+    if (!btn) return;
+    if (!confirm('Delete this photo?')) return;
+
+    const expenseId = Number(btn.dataset.expenseId);
+    const photoId = Number(btn.dataset.photoId);
+    try {
+      await api(`/api/expenses/${expenseId}/photos/${photoId}`, { method: 'DELETE' });
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+
+    const expense = currentMonthExpenses.find(e => e.id === expenseId);
+    if (expense) {
+      expense.photos = expense.photos.filter(p => p.id !== photoId);
+      renderEditPhotos(expense);
+    }
   });
 
   els.form.addEventListener('submit', async (evt) => {
@@ -425,9 +524,12 @@
       date: els.date.value,
     };
 
-    let created;
+    const isEditing = editingExpenseId !== null;
+    let saved;
     try {
-      created = await api('/api/expenses', { method: 'POST', body: JSON.stringify(payload) });
+      saved = isEditing
+        ? await api(`/api/expenses/${editingExpenseId}`, { method: 'PUT', body: JSON.stringify(payload) })
+        : await api('/api/expenses', { method: 'POST', body: JSON.stringify(payload) });
     } catch (err) {
       alert(err.message);
       return;
@@ -435,17 +537,21 @@
 
     if (els.photos.files.length > 0) {
       try {
-        await uploadPhotos(created.id, els.photos.files);
+        await uploadPhotos(saved.id, els.photos.files);
       } catch (err) {
-        alert(`Expense saved, but photo upload failed: ${err.message}`);
+        alert(`Expense saved, but file upload failed: ${err.message}`);
       }
     }
 
     const enteredDate = els.date.value;
-    els.form.reset();
-    els.date.value = enteredDate;
-    lastCategoryValue = els.category.value;
-    els.photosHint.hidden = true;
+    if (isEditing) {
+      exitEditMode();
+    } else {
+      els.form.reset();
+      els.date.value = enteredDate;
+      lastCategoryValue = els.category.value;
+      els.photosHint.hidden = true;
+    }
 
     const [y, m] = enteredDate.split('-').map(Number);
     viewDate = new Date(y, m - 1, 1);
@@ -455,16 +561,27 @@
   });
 
   els.expenseList.addEventListener('click', async (evt) => {
-    const btn = evt.target.closest('.delete-btn');
-    if (!btn) return;
-    const id = Number(btn.dataset.id);
-    try {
-      await api(`/api/expenses/${id}`, { method: 'DELETE' });
-    } catch (err) {
-      alert(err.message);
+    const deleteBtn = evt.target.closest('.delete-btn');
+    const photoLink = evt.target.closest('.expense-photos');
+
+    if (deleteBtn) {
+      if (!confirm('Delete this expense?')) return;
+      const id = Number(deleteBtn.dataset.id);
+      try {
+        await api(`/api/expenses/${id}`, { method: 'DELETE' });
+      } catch (err) {
+        alert(err.message);
+        return;
+      }
+      if (editingExpenseId === id) exitEditMode();
+      await loadHome();
       return;
     }
-    await loadHome();
+
+    if (photoLink) return;
+
+    const row = evt.target.closest('.expense-row');
+    if (row) enterEditMode(Number(row.dataset.id));
   });
 
   // ---------------------------------------------------------- categories ----

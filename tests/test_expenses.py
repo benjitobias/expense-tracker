@@ -39,6 +39,49 @@ def test_update_expense(client, alice):
     assert resp.json()["description"] == "Lunch"
 
 
+def test_update_expense_sets_location_and_note(client, alice):
+    created = create_expense(client, alice).json()
+    resp = client.put(
+        f"/api/expenses/{created['id']}",
+        headers=alice,
+        json={
+            "amount": 20, "description": "Lunch", "category": "Food", "date": "2026-08-07",
+            "location": "Cafe", "note": "with the team",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["location"] == "Cafe"
+    assert resp.json()["note"] == "with the team"
+
+
+def test_update_expense_can_clear_location_and_note(client, alice):
+    created = create_expense(client, alice, location="Cafe", note="old note").json()
+    resp = client.put(
+        f"/api/expenses/{created['id']}",
+        headers=alice,
+        json={"amount": 20, "description": "Lunch", "category": "Food", "date": "2026-08-07"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["location"] is None
+    assert resp.json()["note"] is None
+
+
+def test_update_expense_response_reflects_existing_photos(client, alice):
+    created = create_expense(client, alice).json()
+    photo = client.post(
+        f"/api/expenses/{created['id']}/photos",
+        headers=alice,
+        files=[("files", ("a.jpg", b"\xff\xd8\xff\xe0x", "image/jpeg"))],
+    ).json()[0]
+
+    resp = client.put(
+        f"/api/expenses/{created['id']}",
+        headers=alice,
+        json={"amount": 20, "description": "Lunch", "category": "Food", "date": "2026-08-07"},
+    )
+    assert [p["id"] for p in resp.json()["photos"]] == [photo["id"]]
+
+
 def test_update_missing_expense_404s(client, alice):
     resp = client.put(
         "/api/expenses/999",
