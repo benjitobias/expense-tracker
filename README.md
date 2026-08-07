@@ -4,7 +4,7 @@ A single-user expense tracker: FastAPI + SQLite backend, mobile-first frontend
 with three tabs — Home (log & browse expenses), Insights (spending trends,
 day-of-week patterns), Budgets (per-category limits with over/near alerts).
 
-## Run it
+## Run it standalone
 
 ```
 docker build -t expenses .
@@ -26,6 +26,31 @@ Open `http://<server-ip>:8000` and log in with `APP_PASSWORD`.
 - If you put this behind an HTTPS reverse proxy (recommended if reachable
   from outside your home network), also set `-e SECURE_COOKIES=true` so the
   session cookie is marked `Secure`.
+
+## Run it behind the shared reverse-proxy
+
+Routing and TLS for this app are handled by the standalone `reverse-proxy`
+project (see `../reverse-proxy/README.md`), not by anything in this repo or
+in `working_bizint_ng`. This project only needs to join the network it
+exposes:
+
+1. **Set your password:**
+   ```
+   cp .env.example .env
+   # edit .env — set a real APP_PASSWORD; SECURE_COOKIES=true is already set
+   # since TLS terminates at the reverse proxy, not here
+   ```
+2. **Bring it up** (after `reverse-proxy` has been started at least once, so
+   the `shared_proxy` network exists):
+   ```
+   docker compose up -d --build
+   ```
+   `docker-compose.yml` joins `expenses_web` to `shared_proxy` and publishes
+   no host ports — it's only reachable through the reverse proxy.
+
+Routing (`money.bizint.xyz` → `expenses_web:8000`) and the TLS cert are
+already set up in `reverse-proxy/conf.d/money.conf` — see that project's
+README for how to add another subdomain the same way in the future.
 
 ## Local development
 

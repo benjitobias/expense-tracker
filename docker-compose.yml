@@ -1,0 +1,18 @@
+services:
+  expenses_web:
+    container_name: expenses_web
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - expenses_data:/data
+    networks:
+      - shared_proxy
+
+networks:
+  shared_proxy:
+    external: true
+
+volumes:
+  expenses_data:
