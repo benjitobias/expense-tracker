@@ -111,13 +111,20 @@ the legacy single-password → multi-user migration path.
   filed each entry.
 - There's no admin UI for managing accounts — new users are provisioned by
   adding them to `USERS` and redeploying; passwords are changed self-service
-  from the in-app Account section (Feedback tab).
+  from the in-app Account section (Management tab).
 - Categories start from a fixed list (Food, Transport, Shopping,
   Entertainment, Health, Housing, Utilities, Other) but each account can add
   its own on the fly from the "+ Add new category" option in the add-expense
   form. Custom categories are private per account (like expenses/budgets),
   can be budgeted just like the built-ins, and there's no way to rename or
   remove one once added (add a fresh one and stop using the old one instead).
-- Expenses can optionally record where the purchase was made (a free-text
-  location field); it's not used in any charts or filters yet, just shown
-  alongside the category in the expense list.
+- Expenses can optionally record where the purchase was made, a free-text
+  note, and up to 5 photos (5MB each; jpeg/png/webp/gif) — all tucked behind
+  a "+ Note, photo, or location" disclosure on the add-expense form since
+  they're rarely needed. None of these are used in charts/filters, just
+  shown on the expense itself. Photos are saved to disk under
+  `<dirname of DB_PATH>/uploads` (e.g. `/data/uploads`), so they're covered
+  by the same `-v expenses-data:/data` volume as the database — no separate
+  volume needed, but also no external backup unless that volume is backed
+  up. There's no way to remove a single photo from an expense short of
+  deleting the whole expense.

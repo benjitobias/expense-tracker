@@ -22,12 +22,18 @@ class ExpenseIn(BaseModel):
     description: str = Field(min_length=1, max_length=200)
     category: str = Field(min_length=1, max_length=40)
     location: str | None = Field(default=None, max_length=200)
+    note: str | None = Field(default=None, max_length=1000)
     date: date_type
+
+
+class PhotoOut(BaseModel):
+    id: int
 
 
 class ExpenseOut(ExpenseIn):
     id: int
     created_at: str
+    photos: list[PhotoOut] = []
 
 
 class BudgetIn(BaseModel):
@@ -50,6 +56,10 @@ class LoginIn(BaseModel):
 class ChangePasswordIn(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8, max_length=200)
+
+
+class ThemeIn(BaseModel):
+    theme: Literal["light", "dark", "system"]
 
 
 class FeedbackIn(BaseModel):

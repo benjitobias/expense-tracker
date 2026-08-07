@@ -172,6 +172,12 @@ body {
   margin-bottom: 16px;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .topbar h1 {
   font-size: 20px;
   font-weight: 700;
@@ -715,11 +721,11 @@ body {
 
 .row-meta {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
 
-#category, #date, #location {
+#category, #date {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
@@ -728,6 +734,54 @@ body {
   color: var(--text-primary);
   width: 100%;
   min-width: 0;
+}
+
+.optional-fields {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.optional-fields summary {
+  padding: 12px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.optional-fields summary:hover { color: var(--text-primary); }
+
+.optional-fields[open] summary { border-bottom: 1px solid var(--border); }
+
+.optional-fields-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.optional-fields-body input[type="text"],
+.optional-fields-body textarea {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 14px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  width: 100%;
+  resize: vertical;
+}
+
+.optional-fields-body input[type="file"] {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.file-input-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
 }
 
 input, select {
@@ -808,6 +862,29 @@ input, select {
   color: var(--text-muted);
 }
 
+.expense-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-top: 2px;
+}
+
+.expense-photos {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.expense-photo-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  display: block;
+}
+
 .expense-amount {
   font-size: 14px;
   font-weight: 600;
@@ -845,6 +922,12 @@ input, select {
   font-size: 15px;
   background: var(--surface-2);
   color: var(--text-primary);
+}
+
+.export-btn {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
 }
 
 .change-password-msg {

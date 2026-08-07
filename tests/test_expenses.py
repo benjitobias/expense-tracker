@@ -85,6 +85,26 @@ def test_location_is_stored(client, alice):
     assert listing[0]["location"] == "Trader Joe's"
 
 
+def test_note_is_optional(client, alice):
+    resp = create_expense(client, alice)
+    assert resp.status_code == 201
+    assert resp.json()["note"] is None
+
+
+def test_note_is_stored(client, alice):
+    resp = create_expense(client, alice, note="Split with Sarah, she owes half")
+    assert resp.status_code == 201
+    assert resp.json()["note"] == "Split with Sarah, she owes half"
+
+    listing = client.get("/api/expenses?month=2026-08", headers=alice).json()
+    assert listing[0]["note"] == "Split with Sarah, she owes half"
+
+
+def test_new_expense_has_no_photos(client, alice):
+    resp = create_expense(client, alice)
+    assert resp.json()["photos"] == []
+
+
 def test_custom_category_usable_after_registration(client, alice):
     created = client.post("/api/categories", headers=alice, json={"name": "Pets"}).json()
     assert created["name"] == "Pets"

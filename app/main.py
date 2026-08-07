@@ -1,9 +1,16 @@
+import io
+import os
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from openpyxl import Workbook
+from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
 
 from . import analytics, auth, database
 from .models import (
@@ -17,7 +24,18 @@ from .models import (
     FeedbackOut,
     FeedbackStatusIn,
     LoginIn,
+    PhotoOut,
+    ThemeIn,
 )
+
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+MAX_PHOTOS_PER_EXPENSE = 5
+PHOTO_EXTENSION_BY_CONTENT_TYPE = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
 
 
 def _user_categories(db: sqlite3.Connection, user_id: int) -> set[str]:
@@ -27,6 +45,33 @@ def _user_categories(db: sqlite3.Connection, user_id: int) -> set[str]:
         ).fetchall()
     }
     return set(CATEGORIES) | custom
+
+
+def _user_theme(db: sqlite3.Connection, user_id: int) -> str:
+    row = db.execute("SELECT theme FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None or row["theme"] is None:
+        return "system"
+    return row["theme"]
+
+
+def _photos_for_expenses(db: sqlite3.Connection, expense_ids: list[int]) -> dict[int, list[dict]]:
+    if not expense_ids:
+        return {}
+    placeholders = ",".join("?" * len(expense_ids))
+    rows = db.execute(
+        f"SELECT id, expense_id FROM expense_photos WHERE expense_id IN ({placeholders}) ORDER BY id",
+        expense_ids,
+    ).fetchall()
+    by_expense: dict[int, list[dict]] = {}
+    for r in rows:
+        by_expense.setdefault(r["expense_id"], []).append({"id": r["id"]})
+    return by_expense
+
+
+def _expense_with_photos(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
+    data = dict(row)
+    data["photos"] = _photos_for_expenses(db, [row["id"]]).get(row["id"], [])
+    return data
 
 
 @asynccontextmanager
@@ -57,7 +102,7 @@ def login(
         raise HTTPException(status_code=429, detail="Too many attempts, try again in a minute")
 
     row = db.execute(
-        "SELECT id, username, password_hash FROM users WHERE username = ?", (payload.username,)
+        "SELECT id, username, password_hash, theme FROM users WHERE username = ?", (payload.username,)
     ).fetchone()
     if row is None:
         auth.verify_unknown_user()
@@ -77,7 +122,7 @@ def login(
         secure=auth.SECURE_COOKIES,
         max_age=auth.SESSION_TTL,
     )
-    return {"ok": True, "username": user.username}
+    return {"ok": True, "username": user.username, "theme": row["theme"] or "system"}
 
 
 @app.post("/api/logout")
@@ -90,8 +135,11 @@ def logout(request: Request, response: Response):
 
 
 @app.get("/api/me")
-def me(user: auth.SessionUser = Depends(auth.require_auth)):
-    return {"ok": True, "username": user.username}
+def me(
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    return {"ok": True, "username": user.username, "theme": _user_theme(db, user.id)}
 
 
 @app.post("/api/change-password")
@@ -111,6 +159,18 @@ def change_password(
     return {"ok": True}
 
 
+@app.put("/api/theme")
+def set_theme(
+    payload: ThemeIn,
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    stored = None if payload.theme == "system" else payload.theme
+    db.execute("UPDATE users SET theme = ? WHERE id = ?", (stored, user.id))
+    db.commit()
+    return {"theme": payload.theme}
+
+
 # ------------------------------------------------------------ expenses ----
 
 @app.get("/api/expenses", response_model=list[ExpenseOut])
@@ -123,7 +183,8 @@ def list_expenses(
         "SELECT * FROM expenses WHERE user_id = ? AND date LIKE ? ORDER BY date DESC, id DESC",
         (user.id, f"{month}%"),
     ).fetchall()
-    return [dict(r) for r in rows]
+    photos_by_expense = _photos_for_expenses(db, [r["id"] for r in rows])
+    return [{**dict(r), "photos": photos_by_expense.get(r["id"], [])} for r in rows]
 
 
 @app.post("/api/expenses", response_model=ExpenseOut, status_code=201)
@@ -136,16 +197,16 @@ def create_expense(
         raise HTTPException(status_code=400, detail="Unknown category")
     created_at = datetime.utcnow().isoformat()
     cur = db.execute(
-        "INSERT INTO expenses (user_id, amount, description, category, location, date, created_at) "
-        "VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO expenses (user_id, amount, description, category, location, note, date, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?)",
         (
             user.id, payload.amount, payload.description, payload.category,
-            payload.location, payload.date.isoformat(), created_at,
+            payload.location, payload.note, payload.date.isoformat(), created_at,
         ),
     )
     db.commit()
     row = db.execute("SELECT * FROM expenses WHERE id = ?", (cur.lastrowid,)).fetchone()
-    return dict(row)
+    return _expense_with_photos(db, row)
 
 
 @app.put("/api/expenses/{expense_id}", response_model=ExpenseOut)
@@ -163,15 +224,15 @@ def update_expense(
     if payload.category not in _user_categories(db, user.id):
         raise HTTPException(status_code=400, detail="Unknown category")
     db.execute(
-        "UPDATE expenses SET amount=?, description=?, category=?, location=?, date=? WHERE id=?",
+        "UPDATE expenses SET amount=?, description=?, category=?, location=?, note=?, date=? WHERE id=?",
         (
             payload.amount, payload.description, payload.category,
-            payload.location, payload.date.isoformat(), expense_id,
+            payload.location, payload.note, payload.date.isoformat(), expense_id,
         ),
     )
     db.commit()
     row = db.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
-    return dict(row)
+    return _expense_with_photos(db, row)
 
 
 @app.delete("/api/expenses/{expense_id}", status_code=204)
@@ -180,11 +241,87 @@ def delete_expense(
     user: auth.SessionUser = Depends(auth.require_auth),
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
+    photos = db.execute(
+        "SELECT filename FROM expense_photos WHERE expense_id = ? AND user_id = ?",
+        (expense_id, user.id),
+    ).fetchall()
     result = db.execute("DELETE FROM expenses WHERE id = ? AND user_id = ?", (expense_id, user.id))
     db.commit()
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Expense not found")
+    for p in photos:
+        path = os.path.join(database.uploads_dir(), p["filename"])
+        if os.path.isfile(path):
+            os.remove(path)
     return Response(status_code=204)
+
+
+# -------------------------------------------------------- expense photos ----
+
+@app.post("/api/expenses/{expense_id}/photos", response_model=list[PhotoOut], status_code=201)
+async def upload_expense_photos(
+    expense_id: int,
+    files: list[UploadFile] = File(...),
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    existing = db.execute(
+        "SELECT id FROM expenses WHERE id = ? AND user_id = ?", (expense_id, user.id)
+    ).fetchone()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    current_count = db.execute(
+        "SELECT COUNT(*) AS n FROM expense_photos WHERE expense_id = ?", (expense_id,)
+    ).fetchone()["n"]
+    if current_count + len(files) > MAX_PHOTOS_PER_EXPENSE:
+        raise HTTPException(
+            status_code=400, detail=f"An expense can have at most {MAX_PHOTOS_PER_EXPENSE} photos"
+        )
+
+    # Validate and read everything up front so a bad file in the batch
+    # doesn't leave earlier ones written to disk without a DB row.
+    to_save: list[tuple[str, bytes]] = []
+    for file in files:
+        if file.content_type not in PHOTO_EXTENSION_BY_CONTENT_TYPE:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}")
+        data = await file.read()
+        if len(data) > MAX_PHOTO_BYTES:
+            raise HTTPException(status_code=400, detail="Each photo must be 5MB or smaller")
+        to_save.append((file.content_type, data))
+
+    created = []
+    created_at = datetime.utcnow().isoformat()
+    for content_type, data in to_save:
+        filename = f"{uuid4().hex}{PHOTO_EXTENSION_BY_CONTENT_TYPE[content_type]}"
+        with open(os.path.join(database.uploads_dir(), filename), "wb") as f:
+            f.write(data)
+        cur = db.execute(
+            "INSERT INTO expense_photos (expense_id, user_id, filename, content_type, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (expense_id, user.id, filename, content_type, created_at),
+        )
+        created.append({"id": cur.lastrowid})
+    db.commit()
+    return created
+
+
+@app.get("/api/expenses/{expense_id}/photos/{photo_id}")
+def get_expense_photo(
+    expense_id: int,
+    photo_id: int,
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    row = db.execute(
+        "SELECT filename, content_type FROM expense_photos "
+        "WHERE id = ? AND expense_id = ? AND user_id = ?",
+        (photo_id, expense_id, user.id),
+    ).fetchone()
+    path = os.path.join(database.uploads_dir(), row["filename"]) if row else None
+    if not row or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return FileResponse(path, media_type=row["content_type"])
 
 
 # ------------------------------------------------------------- budgets ----
@@ -299,6 +436,55 @@ def budget_status_endpoint(
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
     return analytics.budget_status(db, month, user.id)
+
+
+# --------------------------------------------------------------- export ----
+
+@app.get("/api/export/expenses.xlsx")
+def export_expenses(
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    rows = db.execute(
+        "SELECT date, category, description, location, amount FROM expenses "
+        "WHERE user_id = ? ORDER BY date, id",
+        (user.id,),
+    ).fetchall()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Expenses"
+
+    headers = ["Date", "Category", "Description", "Location", "Amount (ILS)"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+
+    for r in rows:
+        ws.append([r["date"], r["category"], r["description"], r["location"] or "", r["amount"]])
+
+    for cell in ws["E"][1:]:
+        cell.number_format = "#,##0.00"
+
+    if rows:
+        total_row = len(rows) + 2
+        ws.cell(row=total_row, column=1, value="Total").font = Font(bold=True)
+        total_cell = ws.cell(row=total_row, column=5, value=f"=SUM(E2:E{total_row - 1})")
+        total_cell.font = Font(bold=True)
+        total_cell.number_format = "#,##0.00"
+
+    for i, width in enumerate([12, 16, 32, 20, 14], start=1):
+        ws.column_dimensions[get_column_letter(i)].width = width
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=expenses.xlsx"},
+    )
 
 
 # ------------------------------------------------------------ feedback ----

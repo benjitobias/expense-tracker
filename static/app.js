@@ -15,6 +15,9 @@
   let customCategories = [];
   let lastCategoryValue = 'Food';
 
+  const THEME_ORDER = ['system', 'light', 'dark'];
+  const THEME_ICON = { system: '🌗', light: '☀️', dark: '🌙' };
+
   const MONTH_NAMES = ['January','February','March','April','May','June',
     'July','August','September','October','November','December'];
 
@@ -27,6 +30,7 @@
     appView: document.getElementById('appView'),
     pageTitle: document.getElementById('pageTitle'),
     currentUser: document.getElementById('currentUser'),
+    themeToggle: document.getElementById('themeToggle'),
     logoutBtn: document.getElementById('logoutBtn'),
 
     accountUsername: document.getElementById('accountUsername'),
@@ -34,6 +38,7 @@
     currentPassword: document.getElementById('currentPassword'),
     newPassword: document.getElementById('newPassword'),
     changePasswordMsg: document.getElementById('changePasswordMsg'),
+    exportBtn: document.getElementById('exportBtn'),
 
     prevMonth: document.getElementById('prevMonth'),
     nextMonth: document.getElementById('nextMonth'),
@@ -45,6 +50,9 @@
     amount: document.getElementById('amount'),
     description: document.getElementById('description'),
     location: document.getElementById('location'),
+    note: document.getElementById('note'),
+    photos: document.getElementById('photos'),
+    photosHint: document.getElementById('photosHint'),
     category: document.getElementById('category'),
     date: document.getElementById('date'),
     emptyState: document.getElementById('emptyState'),
@@ -115,6 +123,43 @@
     els.accountUsername.textContent = username;
   }
 
+  // ----------------------------------------------------------- theme ----
+
+  function applyTheme(theme) {
+    if (theme === 'light' || theme === 'dark') {
+      document.documentElement.dataset.theme = theme;
+    } else {
+      delete document.documentElement.dataset.theme;
+    }
+    localStorage.setItem('theme', theme);
+    els.themeToggle.textContent = THEME_ICON[theme];
+    els.themeToggle.setAttribute('aria-label', `Theme: ${theme}`);
+  }
+
+  function resolvedTheme(theme) {
+    if (theme === 'light' || theme === 'dark') return theme;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+
+  els.themeToggle.addEventListener('click', async () => {
+    const current = document.documentElement.dataset.theme || 'system';
+    const currentLooks = resolvedTheme(current);
+    const idx = THEME_ORDER.indexOf(current);
+    // "system" can look identical to "light" or "dark" depending on the
+    // OS/browser preference. Skip a step whenever the next state wouldn't
+    // actually look any different, so every click visibly changes the theme.
+    let next = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
+    if (resolvedTheme(next) === currentLooks) {
+      next = THEME_ORDER[(idx + 2) % THEME_ORDER.length];
+    }
+    applyTheme(next);
+    try {
+      await api('/api/theme', { method: 'PUT', body: JSON.stringify({ theme: next }) });
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
   function showLogin() {
     els.loginView.hidden = false;
     els.appView.hidden = true;
@@ -137,6 +182,7 @@
         body: JSON.stringify({ username: els.loginUsername.value, password: els.loginPassword.value }),
       });
       setCurrentUser(res.username);
+      applyTheme(res.theme);
       els.loginPassword.value = '';
       await showApp();
     } catch (err) {
@@ -172,9 +218,36 @@
     }
   });
 
+  els.exportBtn.addEventListener('click', async () => {
+    els.exportBtn.disabled = true;
+    els.exportBtn.textContent = 'Exporting…';
+    try {
+      const res = await fetch('/api/export/expenses.xlsx');
+      if (res.status === 401) {
+        showLogin();
+        return;
+      }
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'expenses.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.message || 'Export failed');
+    } finally {
+      els.exportBtn.disabled = false;
+      els.exportBtn.textContent = 'Export expenses to Excel';
+    }
+  });
+
   // -------------------------------------------------------------- tabs ----
 
-  const TAB_TITLES = { home: 'Home', insights: 'Insights', budgets: 'Budgets', feedback: 'Feedback' };
+  const TAB_TITLES = { home: 'Home', insights: 'Insights', budgets: 'Budgets', feedback: 'Management' };
 
   function setActiveTab(tab) {
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -278,12 +351,19 @@
 
       const rows = items.map(e => {
         const meta = CATEGORIES[e.category] || CUSTOM_CATEGORY_META;
+        const photosHtml = e.photos && e.photos.length ? `
+              <div class="expense-photos">${e.photos.map(p => `
+                <a href="/api/expenses/${e.id}/photos/${p.id}" target="_blank" rel="noopener">
+                  <img class="expense-photo-thumb" src="/api/expenses/${e.id}/photos/${p.id}" alt="Receipt photo" loading="lazy" />
+                </a>`).join('')}</div>` : '';
         return `
           <div class="expense-row" data-id="${e.id}">
             <span class="cat-dot" style="background:var(${meta.color})"></span>
             <div class="expense-main">
               <div class="expense-desc">${escapeHtml(e.description)}</div>
               <div class="expense-cat">${meta.icon} ${e.category}${e.location ? ` · ${escapeHtml(e.location)}` : ''}</div>
+              ${e.note ? `<div class="expense-note">${escapeHtml(e.note)}</div>` : ''}
+              ${photosHtml}
             </div>
             <span class="expense-amount">${currency(e.amount)}</span>
             <button class="delete-btn" data-id="${e.id}" aria-label="Delete expense" type="button">×</button>
@@ -310,6 +390,27 @@
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   }
 
+  async function uploadPhotos(expenseId, fileList) {
+    if (!fileList || fileList.length === 0) return;
+    const formData = new FormData();
+    for (const file of fileList) formData.append('files', file);
+    const res = await fetch(`/api/expenses/${expenseId}/photos`, { method: 'POST', body: formData });
+    if (!res.ok) {
+      let detail = 'Photo upload failed';
+      try {
+        const body = await res.json();
+        if (body.detail) detail = body.detail;
+      } catch { /* no body */ }
+      throw new Error(detail);
+    }
+  }
+
+  els.photos.addEventListener('change', () => {
+    const n = els.photos.files.length;
+    els.photosHint.hidden = n === 0;
+    els.photosHint.textContent = n === 1 ? `📷 ${els.photos.files[0].name}` : `📷 ${n} photos selected`;
+  });
+
   els.form.addEventListener('submit', async (evt) => {
     evt.preventDefault();
     const amount = parseFloat(els.amount.value);
@@ -319,21 +420,32 @@
       amount,
       description: els.description.value.trim() || 'Expense',
       location: els.location.value.trim() || null,
+      note: els.note.value.trim() || null,
       category: els.category.value,
       date: els.date.value,
     };
 
+    let created;
     try {
-      await api('/api/expenses', { method: 'POST', body: JSON.stringify(payload) });
+      created = await api('/api/expenses', { method: 'POST', body: JSON.stringify(payload) });
     } catch (err) {
       alert(err.message);
       return;
+    }
+
+    if (els.photos.files.length > 0) {
+      try {
+        await uploadPhotos(created.id, els.photos.files);
+      } catch (err) {
+        alert(`Expense saved, but photo upload failed: ${err.message}`);
+      }
     }
 
     const enteredDate = els.date.value;
     els.form.reset();
     els.date.value = enteredDate;
     lastCategoryValue = els.category.value;
+    els.photosHint.hidden = true;
 
     const [y, m] = enteredDate.split('-').map(Number);
     viewDate = new Date(y, m - 1, 1);
@@ -704,9 +816,11 @@
   // -------------------------------------------------------------- init ----
 
   (async function init() {
+    applyTheme(document.documentElement.dataset.theme || 'system');
     try {
       const res = await api('/api/me');
       setCurrentUser(res.username);
+      applyTheme(res.theme);
       await showApp();
     } catch {
       showLogin();

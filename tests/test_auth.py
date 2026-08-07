@@ -4,7 +4,7 @@ from tests.helpers import login
 def test_login_success_sets_session_cookie(client):
     resp = client.post("/api/login", json={"username": "alice", "password": "alicepass1"})
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "username": "alice"}
+    assert resp.json() == {"ok": True, "username": "alice", "theme": "system"}
     assert "session" in resp.cookies
 
 

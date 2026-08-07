@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Expenses</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💸</text></svg>" />
+<script>
+  // Applied before the stylesheet loads so there's no flash of the wrong
+  // theme; reconciled against the account's stored preference after login.
+  (() => {
+    const cached = localStorage.getItem('theme');
+    if (cached === 'light' || cached === 'dark') {
+      document.documentElement.dataset.theme = cached;
+    }
+  })();
+</script>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -27,7 +37,10 @@
       <h1 id="pageTitle">Home</h1>
       <p id="currentUser" class="current-user"></p>
     </div>
-    <button id="logoutBtn" class="icon-btn" aria-label="Log out" type="button">⎋</button>
+    <div class="topbar-actions">
+      <button id="themeToggle" class="icon-btn" aria-label="Change theme" type="button">🌗</button>
+      <button id="logoutBtn" class="icon-btn" aria-label="Log out" type="button">⎋</button>
+    </div>
   </header>
 
   <!-- ---------------- Home tab ---------------- -->
@@ -69,8 +82,16 @@
             <option value="__add__">+ Add new category…</option>
           </select>
           <input id="date" type="date" required />
-          <input id="location" type="text" placeholder="📍 Where?" maxlength="200" />
         </div>
+        <details class="optional-fields">
+          <summary>+ Note, photo, or location</summary>
+          <div class="optional-fields-body">
+            <input id="location" type="text" placeholder="📍 Where?" maxlength="200" />
+            <textarea id="note" placeholder="📝 Add a note" maxlength="1000" rows="2"></textarea>
+            <input id="photos" type="file" accept="image/*" multiple />
+            <p id="photosHint" class="file-input-hint" hidden></p>
+          </div>
+        </details>
         <button type="submit" class="add-btn">Add expense</button>
       </form>
     </section>
@@ -150,6 +171,7 @@
         <button type="submit" class="add-btn">Change password</button>
         <p id="changePasswordMsg" class="change-password-msg" hidden></p>
       </form>
+      <button type="button" id="exportBtn" class="add-btn export-btn">Export expenses to Excel</button>
     </section>
   </main>
 
@@ -164,7 +186,7 @@
       <span class="tab-icon">🎯</span><span class="tab-label">Budgets</span>
     </button>
     <button class="tab-btn" data-tab="feedback" type="button">
-      <span class="tab-icon">📝</span><span class="tab-label">Feedback</span>
+      <span class="tab-icon">⚙️</span><span class="tab-label">Management</span>
     </button>
   </nav>
 

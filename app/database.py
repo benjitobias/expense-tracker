@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    theme TEXT
 );
 """
 
@@ -24,10 +25,21 @@ CREATE TABLE IF NOT EXISTS expenses (
     description TEXT NOT NULL,
     category TEXT NOT NULL,
     location TEXT,
+    note TEXT,
     date TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_expenses_user_date ON expenses(user_id, date);
+
+CREATE TABLE IF NOT EXISTS expense_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expense_id INTEGER NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_expense_photos_expense ON expense_photos(expense_id);
 
 CREATE TABLE IF NOT EXISTS budgets (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -126,8 +138,25 @@ def _migrate_add_expense_location(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+def _migrate_add_expense_note(conn: sqlite3.Connection) -> None:
+    if _table_exists(conn, "expenses") and "note" not in _columns(conn, "expenses"):
+        conn.execute("ALTER TABLE expenses ADD COLUMN note TEXT")
+        conn.commit()
+
+
+def _migrate_add_user_theme(conn: sqlite3.Connection) -> None:
+    if _table_exists(conn, "users") and "theme" not in _columns(conn, "users"):
+        conn.execute("ALTER TABLE users ADD COLUMN theme TEXT")
+        conn.commit()
+
+
+def uploads_dir() -> str:
+    return os.path.join(os.path.dirname(DB_PATH) or ".", "uploads")
+
+
 def init_db() -> None:
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+    os.makedirs(uploads_dir(), exist_ok=True)
     conn = get_connection()
     try:
         conn.executescript(USERS_SCHEMA)
@@ -136,6 +165,8 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
         conn.commit()
         _migrate_add_expense_location(conn)
+        _migrate_add_expense_note(conn)
+        _migrate_add_user_theme(conn)
     finally:
         conn.close()
 
