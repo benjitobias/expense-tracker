@@ -190,6 +190,24 @@ body {
   margin: 2px 0 0;
 }
 
+.search-row { margin-bottom: 12px; }
+
+.search-row input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 14px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+.search-results-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: -4px 0 12px;
+}
+
 .month-nav-row {
   display: flex;
   align-items: center;
@@ -976,18 +994,21 @@ input, select {
   white-space: nowrap;
 }
 
-.delete-btn {
+.delete-btn, .repeat-btn {
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
   padding: 4px 2px;
   flex: none;
 }
 
+.delete-btn { font-size: 18px; }
+
 .delete-btn:hover { color: var(--danger); }
+.repeat-btn:hover { color: var(--text-primary); }
 
 /* ---------------- Account ---------------- */
 

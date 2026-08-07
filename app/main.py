@@ -189,6 +189,29 @@ def list_expenses(
     return [{**dict(r), "photos": photos_by_expense.get(r["id"], [])} for r in rows]
 
 
+SEARCH_RESULT_LIMIT = 100
+
+
+@app.get("/api/expenses/search", response_model=list[ExpenseOut])
+def search_expenses(
+    q: str,
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    term = q.strip()
+    if not term:
+        return []
+    like = f"%{term}%"
+    rows = db.execute(
+        "SELECT * FROM expenses WHERE user_id = ? AND ("
+        "description LIKE ? OR note LIKE ? OR location LIKE ? OR category LIKE ? OR payment_method LIKE ?"
+        ") ORDER BY date DESC, id DESC LIMIT ?",
+        (user.id, like, like, like, like, like, SEARCH_RESULT_LIMIT),
+    ).fetchall()
+    photos_by_expense = _photos_for_expenses(db, [r["id"] for r in rows])
+    return [{**dict(r), "photos": photos_by_expense.get(r["id"], [])} for r in rows]
+
+
 @app.post("/api/expenses", response_model=ExpenseOut, status_code=201)
 def create_expense(
     payload: ExpenseIn,
@@ -199,11 +222,12 @@ def create_expense(
         raise HTTPException(status_code=400, detail="Unknown category")
     created_at = datetime.utcnow().isoformat()
     cur = db.execute(
-        "INSERT INTO expenses (user_id, amount, description, category, location, note, date, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?)",
+        "INSERT INTO expenses "
+        "(user_id, amount, description, category, location, note, payment_method, date, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
         (
             user.id, payload.amount, payload.description, payload.category,
-            payload.location, payload.note, payload.date.isoformat(), created_at,
+            payload.location, payload.note, payload.payment_method, payload.date.isoformat(), created_at,
         ),
     )
     db.commit()
@@ -226,10 +250,11 @@ def update_expense(
     if payload.category not in _user_categories(db, user.id):
         raise HTTPException(status_code=400, detail="Unknown category")
     db.execute(
-        "UPDATE expenses SET amount=?, description=?, category=?, location=?, note=?, date=? WHERE id=?",
+        "UPDATE expenses SET amount=?, description=?, category=?, location=?, note=?, "
+        "payment_method=?, date=? WHERE id=?",
         (
             payload.amount, payload.description, payload.category,
-            payload.location, payload.note, payload.date.isoformat(), expense_id,
+            payload.location, payload.note, payload.payment_method, payload.date.isoformat(), expense_id,
         ),
     )
     db.commit()

@@ -23,6 +23,7 @@ class ExpenseIn(BaseModel):
     category: str = Field(min_length=1, max_length=40)
     location: str | None = Field(default=None, max_length=200)
     note: str | None = Field(default=None, max_length=1000)
+    payment_method: Literal["Cash", "Card"] = "Card"
     date: date_type
 
 

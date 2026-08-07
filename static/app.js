@@ -11,11 +11,15 @@
   };
   const CUSTOM_CATEGORY_META = { icon: '🏷️', color: '--cat-custom' };
   const ADD_CATEGORY_VALUE = '__add__';
+  const PAYMENT_ICON = { Cash: '💵', Card: '💳' };
 
   let customCategories = [];
   let lastCategoryValue = 'Food';
   let currentMonthExpenses = [];
   let editingExpenseId = null;
+  let paymentMethod = 'Card';
+  let searchQuery = '';
+  let searchDebounceTimer = null;
 
   const THEME_ORDER = ['system', 'light', 'dark'];
   const THEME_ICON = { system: '🌗', light: '☀️', dark: '🌙' };
@@ -42,6 +46,11 @@
     changePasswordMsg: document.getElementById('changePasswordMsg'),
     exportBtn: document.getElementById('exportBtn'),
 
+    searchInput: document.getElementById('searchInput'),
+    searchResultsLabel: document.getElementById('searchResultsLabel'),
+    monthNavRow: document.getElementById('monthNavRow'),
+    heroSection: document.getElementById('heroSection'),
+
     prevMonth: document.getElementById('prevMonth'),
     nextMonth: document.getElementById('nextMonth'),
     monthLabel: document.getElementById('monthLabel'),
@@ -54,6 +63,7 @@
     description: document.getElementById('description'),
     location: document.getElementById('location'),
     note: document.getElementById('note'),
+    paymentToggle: document.getElementById('paymentToggle'),
     optionalFields: document.getElementById('optionalFields'),
     editPhotosList: document.getElementById('editPhotosList'),
     photos: document.getElementById('photos'),
@@ -311,6 +321,72 @@
     renderList(monthExpenses);
   }
 
+  // ------------------------------------------------------------ search ----
+
+  function showSearchView() {
+    els.monthNavRow.hidden = true;
+    els.heroSection.hidden = true;
+    els.chartCard.hidden = true;
+  }
+
+  function showMonthView() {
+    els.monthNavRow.hidden = false;
+    els.heroSection.hidden = false;
+    els.searchResultsLabel.hidden = true;
+  }
+
+  async function runSearch(query) {
+    searchQuery = query;
+    if (!query) {
+      showMonthView();
+      await loadHome();
+      return;
+    }
+
+    showSearchView();
+    let results;
+    try {
+      results = await api(`/api/expenses/search?q=${encodeURIComponent(query)}`);
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+
+    currentMonthExpenses = results;
+    els.searchResultsLabel.hidden = false;
+    els.searchResultsLabel.textContent = results.length === 0
+      ? `No results for "${query}"`
+      : `${results.length} result${results.length === 1 ? '' : 's'} for "${query}"`;
+
+    els.emptyState.hidden = true;
+    if (results.length === 0) {
+      els.expenseList.innerHTML = '';
+    } else {
+      renderList(results);
+    }
+  }
+
+  async function refreshExpenseView() {
+    if (searchQuery) {
+      await runSearch(searchQuery);
+    } else {
+      await loadHome();
+    }
+  }
+
+  els.searchInput.addEventListener('input', () => {
+    clearTimeout(searchDebounceTimer);
+    const value = els.searchInput.value.trim();
+    searchDebounceTimer = setTimeout(() => runSearch(value), 300);
+  });
+
+  els.searchInput.addEventListener('keydown', (evt) => {
+    if (evt.key !== 'Enter') return;
+    evt.preventDefault();
+    clearTimeout(searchDebounceTimer);
+    runSearch(els.searchInput.value.trim());
+  });
+
   function attachmentHtml(expenseId, photo, removable) {
     const url = `/api/expenses/${expenseId}/photos/${photo.id}`;
     const isPdf = photo.content_type === 'application/pdf';
@@ -388,7 +464,8 @@
               ${e.note ? `<div class="expense-note">${escapeHtml(e.note)}</div>` : ''}
               ${photosHtml}
             </div>
-            <span class="expense-amount">${currency(e.amount)}</span>
+            <span class="expense-amount">${PAYMENT_ICON[e.payment_method] || ''} ${currency(e.amount)}</span>
+            <button class="repeat-btn" data-id="${e.id}" aria-label="Repeat expense" type="button">🔁</button>
             <button class="delete-btn" data-id="${e.id}" aria-label="Delete expense" type="button">×</button>
           </div>`;
       }).join('');
@@ -436,6 +513,18 @@
 
   // -------------------------------------------------------- edit mode ----
 
+  function updatePaymentToggle(method) {
+    paymentMethod = method;
+    els.paymentToggle.querySelectorAll('.kind-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.method === method);
+    });
+  }
+
+  els.paymentToggle.addEventListener('click', (evt) => {
+    const btn = evt.target.closest('.kind-btn');
+    if (btn) updatePaymentToggle(btn.dataset.method);
+  });
+
   function renderEditPhotos(expense) {
     const photos = expense.photos || [];
     if (photos.length === 0) {
@@ -460,9 +549,10 @@
     els.photos.value = '';
     els.photosHint.hidden = true;
     populateCategorySelect(expense.category);
+    updatePaymentToggle(expense.payment_method);
     renderEditPhotos(expense);
 
-    if (expense.location || expense.note || (expense.photos && expense.photos.length)) {
+    if (expense.location || expense.note || expense.payment_method !== 'Card' || (expense.photos && expense.photos.length)) {
       els.optionalFields.open = true;
     }
 
@@ -486,6 +576,38 @@
     els.formTitle.hidden = true;
     els.submitExpenseBtn.textContent = 'Add expense';
     els.cancelEditBtn.hidden = true;
+    updatePaymentToggle('Card');
+  }
+
+  function repeatExpense(id) {
+    const expense = currentMonthExpenses.find(e => e.id === id);
+    if (!expense) return;
+
+    // Repeating always creates a brand-new expense, even if a different
+    // one was mid-edit — make sure we're not left pointed at that one.
+    editingExpenseId = null;
+    els.formTitle.hidden = true;
+    els.submitExpenseBtn.textContent = 'Add expense';
+    els.cancelEditBtn.hidden = true;
+
+    els.amount.value = expense.amount;
+    els.description.value = expense.description;
+    els.date.valueAsDate = new Date();
+    els.location.value = expense.location || '';
+    els.note.value = expense.note || '';
+    els.photos.value = '';
+    els.photosHint.hidden = true;
+    els.editPhotosList.hidden = true;
+    els.editPhotosList.innerHTML = '';
+    populateCategorySelect(expense.category);
+    updatePaymentToggle(expense.payment_method);
+
+    if (expense.location || expense.note || expense.payment_method !== 'Card') {
+      els.optionalFields.open = true;
+    }
+
+    els.form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    els.amount.focus();
   }
 
   els.cancelEditBtn.addEventListener('click', exitEditMode);
@@ -522,6 +644,7 @@
       location: els.location.value.trim() || null,
       note: els.note.value.trim() || null,
       category: els.category.value,
+      payment_method: paymentMethod,
       date: els.date.value,
     };
 
@@ -552,17 +675,19 @@
       els.date.value = enteredDate;
       lastCategoryValue = els.category.value;
       els.photosHint.hidden = true;
+      updatePaymentToggle('Card');
     }
 
     const [y, m] = enteredDate.split('-').map(Number);
     viewDate = new Date(y, m - 1, 1);
 
-    await loadHome();
+    await refreshExpenseView();
     els.amount.focus();
   });
 
   els.expenseList.addEventListener('click', async (evt) => {
     const deleteBtn = evt.target.closest('.delete-btn');
+    const repeatBtn = evt.target.closest('.repeat-btn');
     const photoLink = evt.target.closest('.expense-photos');
 
     if (deleteBtn) {
@@ -575,7 +700,12 @@
         return;
       }
       if (editingExpenseId === id) exitEditMode();
-      await loadHome();
+      await refreshExpenseView();
+      return;
+    }
+
+    if (repeatBtn) {
+      repeatExpense(Number(repeatBtn.dataset.id));
       return;
     }
 

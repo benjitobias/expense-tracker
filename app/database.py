@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS expenses (
     category TEXT NOT NULL,
     location TEXT,
     note TEXT,
+    payment_method TEXT NOT NULL DEFAULT 'Card',
     date TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -150,6 +151,12 @@ def _migrate_add_user_theme(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+def _migrate_add_expense_payment_method(conn: sqlite3.Connection) -> None:
+    if _table_exists(conn, "expenses") and "payment_method" not in _columns(conn, "expenses"):
+        conn.execute("ALTER TABLE expenses ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'Card'")
+        conn.commit()
+
+
 def uploads_dir() -> str:
     return os.path.join(os.path.dirname(DB_PATH) or ".", "uploads")
 
@@ -167,6 +174,7 @@ def init_db() -> None:
         _migrate_add_expense_location(conn)
         _migrate_add_expense_note(conn)
         _migrate_add_user_theme(conn)
+        _migrate_add_expense_payment_method(conn)
     finally:
         conn.close()
 

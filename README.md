@@ -132,3 +132,16 @@ the legacy single-password → multi-user migration path.
   category, date, location, note, attachments); tapping the delete button
   deletes it instead. Deleting an expense or an attachment always asks for
   confirmation first.
+- Payment method is a fixed Cash/Card toggle on each expense (defaulting to
+  Card) — unlike categories/currencies this isn't a user-extensible list,
+  since it was asked for as-is.
+- The 🔁 button on an expense row pre-fills the add-expense form with that
+  expense's amount/description/category/location/note/payment method (not
+  its attachments — those aren't duplicated) and sets the date to today, so
+  logging a recurring purchase is a two-tap job. It's not a scheduled
+  "repeats monthly" feature — you still trigger each repeat manually.
+- The Home tab search box queries description, note, location, category,
+  and payment method across your entire history (not just the visible
+  month), capped at 100 results ordered newest-first. It replaces the
+  month view with a flat result list while active; clearing it restores
+  normal month browsing.

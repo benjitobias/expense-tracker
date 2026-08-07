@@ -148,6 +148,37 @@ def test_new_expense_has_no_photos(client, alice):
     assert resp.json()["photos"] == []
 
 
+def test_payment_method_defaults_to_card(client, alice):
+    resp = create_expense(client, alice)
+    assert resp.status_code == 201
+    assert resp.json()["payment_method"] == "Card"
+
+
+def test_payment_method_can_be_set_to_cash(client, alice):
+    resp = create_expense(client, alice, payment_method="Cash")
+    assert resp.status_code == 201
+    assert resp.json()["payment_method"] == "Cash"
+
+    listing = client.get("/api/expenses?month=2026-08", headers=alice).json()
+    assert listing[0]["payment_method"] == "Cash"
+
+
+def test_payment_method_rejects_invalid_value(client, alice):
+    resp = create_expense(client, alice, payment_method="Bitcoin")
+    assert resp.status_code == 422
+
+
+def test_update_expense_changes_payment_method(client, alice):
+    created = create_expense(client, alice, payment_method="Cash").json()
+    resp = client.put(
+        f"/api/expenses/{created['id']}",
+        headers=alice,
+        json={"amount": 20, "description": "Lunch", "category": "Food", "date": "2026-08-07", "payment_method": "Card"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["payment_method"] == "Card"
+
+
 def test_custom_category_usable_after_registration(client, alice):
     created = client.post("/api/categories", headers=alice, json={"name": "Pets"}).json()
     assert created["name"] == "Pets"
