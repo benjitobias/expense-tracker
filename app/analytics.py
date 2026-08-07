@@ -1,3 +1,4 @@
+import calendar
 import sqlite3
 from datetime import date
 
@@ -79,6 +80,26 @@ def day_of_week_patterns(db: sqlite3.Connection, months: int, user_id: int) -> d
         ],
         "weekday_total": round(weekday_total, 2),
         "weekend_total": round(weekend_total, 2),
+    }
+
+
+def daily_totals(db: sqlite3.Connection, month: str, user_id: int) -> dict:
+    year, mon = (int(part) for part in month.split("-"))
+    days_in_month = calendar.monthrange(year, mon)[1]
+
+    rows = db.execute(
+        "SELECT date, amount FROM expenses WHERE user_id = ? AND date LIKE ?",
+        (user_id, f"{month}%"),
+    ).fetchall()
+
+    totals = [0.0] * days_in_month
+    for r in rows:
+        day = int(r["date"][8:10])
+        totals[day - 1] += r["amount"]
+
+    return {
+        "days": list(range(1, days_in_month + 1)),
+        "totals": [round(t, 2) for t in totals],
     }
 
 

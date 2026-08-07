@@ -455,6 +455,15 @@ def patterns(
     return analytics.day_of_week_patterns(db, months, user.id)
 
 
+@app.get("/api/analytics/daily")
+def daily(
+    month: str,
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    return analytics.daily_totals(db, month, user.id)
+
+
 @app.get("/api/analytics/budget-status")
 def budget_status_endpoint(
     month: str,

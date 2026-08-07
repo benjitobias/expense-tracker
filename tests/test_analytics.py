@@ -42,6 +42,39 @@ def test_day_of_week_patterns_split_weekday_weekend(client, alice):
     assert mon["total"] == 40.0
 
 
+def test_daily_totals_for_month(client, alice):
+    add(client, alice, 10, "Food", "2026-02-01")
+    add(client, alice, 5, "Food", "2026-02-01")
+    add(client, alice, 20, "Shopping", "2026-02-15")
+    add(client, alice, 7, "Transport", "2026-02-28")
+    add(client, alice, 999, "Food", "2026-03-01")  # different month
+
+    resp = client.get("/api/analytics/daily?month=2026-02", headers=alice)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["days"] == list(range(1, 29))
+    assert len(body["totals"]) == 28
+    assert body["totals"][0] == 15.0
+    assert body["totals"][14] == 20.0
+    assert body["totals"][27] == 7.0
+    assert sum(body["totals"]) == 42.0
+
+
+def test_daily_totals_empty_month_is_all_zero(client, alice):
+    resp = client.get("/api/analytics/daily?month=2026-02", headers=alice)
+    body = resp.json()
+    assert body["days"] == list(range(1, 29))
+    assert body["totals"] == [0.0] * 28
+
+
+def test_daily_totals_scoped_per_user(client, alice, bob):
+    add(client, alice, 10, "Food", "2026-02-01")
+    add(client, bob, 999, "Food", "2026-02-01")
+
+    resp = client.get("/api/analytics/daily?month=2026-02", headers=alice)
+    assert resp.json()["totals"][0] == 10.0
+
+
 def test_budget_status_thresholds(client, alice):
     client.put("/api/budgets/Food", headers=alice, json={"monthly_limit": 100})
     add(client, alice, 90, "Food", "2026-08-01")

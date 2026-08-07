@@ -65,6 +65,7 @@
     emptyState: document.getElementById('emptyState'),
     expenseList: document.getElementById('expenseList'),
 
+    dailyChart: document.getElementById('dailyChart'),
     trendChart: document.getElementById('trendChart'),
     dowChart: document.getElementById('dowChart'),
     weekdayTotal: document.getElementById('weekdayTotal'),
@@ -645,14 +646,64 @@
   // ---------------------------------------------------- Insights tab ----
 
   async function loadInsights() {
-    const [trends, patterns] = await Promise.all([
+    const [daily, trends, patterns] = await Promise.all([
+      api(`/api/analytics/daily?month=${currentMonthKey()}`),
       api('/api/analytics/trends?months=6'),
       api('/api/analytics/patterns?months=3'),
     ]);
+    renderDailyChart(daily);
     renderTrendChart(trends);
     renderDowChart(patterns.by_day);
     els.weekdayTotal.textContent = currency(patterns.weekday_total);
     els.weekendTotal.textContent = currency(patterns.weekend_total);
+  }
+
+  function renderDailyChart(daily) {
+    const { days, totals } = daily;
+    const W = 320, H = 150, padL = 6, padR = 6, padT = 12, padB = 24;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+    const max = Math.max(...totals, 1);
+    const n = days.length;
+    const colW = plotW / n;
+    const barW = Math.max(colW * 0.6, 1.5);
+    const baseline = padT + plotH;
+
+    const bars = totals.map((total, i) => {
+      const h = Math.max((total / max) * plotH, total > 0 ? 2 : 0);
+      const bx = padL + i * colW + (colW - barW) / 2;
+      const by = baseline - h;
+      return `<rect class="dow-bar" data-i="${i}" x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2"></rect>`;
+    }).join('');
+
+    // Full day-number labels would collide at 28-31 columns, so show a sparse set.
+    const labelDays = new Set([1, 5, 10, 15, 20, 25, n]);
+    const labels = days.map((d, i) => {
+      if (!labelDays.has(d)) return '';
+      const lx = padL + i * colW + colW / 2;
+      return `<text class="dow-axis-label" x="${lx.toFixed(1)}" y="${H - 6}" text-anchor="middle">${d}</text>`;
+    }).join('');
+
+    const hits = totals.map((total, i) => {
+      const hx = padL + i * colW;
+      return `<rect class="dow-hit" data-i="${i}" x="${hx.toFixed(1)}" y="${padT}" width="${colW.toFixed(1)}" height="${plotH}"></rect>`;
+    }).join('');
+
+    els.dailyChart.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+        <line class="dow-baseline" x1="${padL}" y1="${baseline}" x2="${W - padR}" y2="${baseline}"></line>
+        ${bars}
+        ${labels}
+        ${hits}
+      </svg>`;
+
+    els.dailyChart.querySelectorAll('.dow-hit').forEach(hit => {
+      const i = Number(hit.dataset.i);
+      const label = `${MONTH_NAMES[new Date().getMonth()]} ${days[i]} — ${currency(totals[i])}`;
+      hit.addEventListener('pointerenter', (e) => showTooltip(e, label));
+      hit.addEventListener('pointermove', moveTooltip);
+      hit.addEventListener('pointerleave', hideTooltip);
+    });
   }
 
   function renderTrendChart(trends) {
