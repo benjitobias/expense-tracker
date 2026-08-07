@@ -81,7 +81,7 @@
   }
 
   function currency(n) {
-    return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    return n.toLocaleString('he-IL', { style: 'currency', currency: 'ILS' });
   }
 
   function monthKey(date) {
@@ -472,7 +472,7 @@
             <span class="budget-status-label ${status}">${statusText}</span>
           ` : ''}
           <div class="budget-edit">
-            <span class="currency">$</span>
+            <span class="currency">₪</span>
             <input type="number" min="0" step="1" inputmode="decimal"
                    placeholder="${hasLimit ? limit : 'Set limit'}"
                    data-cat="${cat}" class="budget-input" />
