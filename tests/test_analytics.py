@@ -29,17 +29,21 @@ def test_trends_scoped_per_user(client, alice, bob):
 
 
 def test_day_of_week_patterns_split_weekday_weekend(client, alice):
-    add(client, alice, 40, "Food", "2026-08-03")      # Monday
-    add(client, alice, 60, "Shopping", "2026-08-08")  # Saturday
+    # Work week is Sunday-Thursday here; weekend is Friday-Saturday.
+    add(client, alice, 10, "Food", "2026-08-09")      # Sunday -> weekday
+    add(client, alice, 20, "Food", "2026-08-03")      # Monday -> weekday
+    add(client, alice, 30, "Food", "2026-08-06")      # Thursday -> weekday
+    add(client, alice, 40, "Shopping", "2026-08-07")  # Friday -> weekend
+    add(client, alice, 60, "Shopping", "2026-08-08")  # Saturday -> weekend
 
     resp = client.get("/api/analytics/patterns?months=1", headers=alice)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["weekday_total"] == 40.0
-    assert body["weekend_total"] == 60.0
+    assert body["weekday_total"] == 60.0
+    assert body["weekend_total"] == 100.0
 
     mon = next(d for d in body["by_day"] if d["day"] == "Mon")
-    assert mon["total"] == 40.0
+    assert mon["total"] == 20.0
 
 
 def test_daily_totals_for_month(client, alice):

@@ -4,6 +4,10 @@ from datetime import date
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
+# date.weekday() returns Monday=0 .. Sunday=6. The work week here is
+# Sunday-Thursday, so the weekend is just Friday (4) and Saturday (5).
+WEEKEND_WEEKDAYS = {4, 5}
+
 
 def _month_key(d: date) -> str:
     return f"{d.year:04d}-{d.month:02d}"
@@ -64,10 +68,10 @@ def day_of_week_patterns(db: sqlite3.Connection, months: int, user_id: int) -> d
         weekday = date(y, m, d).weekday()
         totals[weekday] += r["amount"]
         counts[weekday] += 1
-        if weekday < 5:
-            weekday_total += r["amount"]
-        else:
+        if weekday in WEEKEND_WEEKDAYS:
             weekend_total += r["amount"]
+        else:
+            weekday_total += r["amount"]
 
     return {
         "by_day": [
