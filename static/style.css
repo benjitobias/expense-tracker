@@ -175,6 +175,12 @@ body {
   margin: 0;
 }
 
+.current-user {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+
 .month-nav-row {
   display: flex;
   align-items: center;
@@ -817,3 +823,30 @@ input, select {
 }
 
 .delete-btn:hover { color: var(--danger); }
+
+/* ---------------- Account ---------------- */
+
+.account-card { margin-top: 12px; }
+
+#changePasswordForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#changePasswordForm input {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 15px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.change-password-msg {
+  font-size: 13px;
+  margin: 0;
+}
+
+.change-password-msg.success { color: var(--status-good); }
+.change-password-msg.error { color: var(--danger); }

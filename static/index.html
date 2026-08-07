@@ -13,6 +13,7 @@
   <form id="loginForm" class="login-card" autocomplete="off">
     <div class="login-icon">💸</div>
     <h1>Expenses</h1>
+    <input id="loginUsername" type="text" placeholder="Username" autocomplete="username" required />
     <input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" required />
     <button type="submit" class="add-btn">Unlock</button>
     <p id="loginError" class="login-error" hidden></p>
@@ -22,7 +23,10 @@
 <div id="appView" class="app" hidden>
 
   <header class="topbar">
-    <h1 id="pageTitle">Home</h1>
+    <div>
+      <h1 id="pageTitle">Home</h1>
+      <p id="currentUser" class="current-user"></p>
+    </div>
     <button id="logoutBtn" class="icon-btn" aria-label="Log out" type="button">⎋</button>
   </header>
 
@@ -133,6 +137,17 @@
         <p class="muted">Jot down a bug or idea above whenever it comes to mind.</p>
       </div>
       <div id="feedbackList"></div>
+    </section>
+
+    <section class="chart-card account-card">
+      <h2 class="card-title">Account</h2>
+      <p class="card-subtitle">Signed in as <strong id="accountUsername"></strong></p>
+      <form id="changePasswordForm" autocomplete="off">
+        <input id="currentPassword" type="password" placeholder="Current password" autocomplete="current-password" required />
+        <input id="newPassword" type="password" placeholder="New password (min 8 characters)" autocomplete="new-password" minlength="8" required />
+        <button type="submit" class="add-btn">Change password</button>
+        <p id="changePasswordMsg" class="change-password-msg" hidden></p>
+      </form>
     </section>
   </main>
 

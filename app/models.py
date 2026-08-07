@@ -41,7 +41,13 @@ class BudgetOut(BudgetIn):
 
 
 class LoginIn(BaseModel):
+    username: str
     password: str
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=200)
 
 
 class FeedbackIn(BaseModel):
@@ -59,3 +65,4 @@ class FeedbackOut(BaseModel):
     text: str
     status: Literal["open", "done"]
     created_at: str
+    username: str | None = None

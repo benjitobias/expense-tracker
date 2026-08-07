@@ -16,11 +16,19 @@
   const els = {
     loginView: document.getElementById('loginView'),
     loginForm: document.getElementById('loginForm'),
+    loginUsername: document.getElementById('loginUsername'),
     loginPassword: document.getElementById('loginPassword'),
     loginError: document.getElementById('loginError'),
     appView: document.getElementById('appView'),
     pageTitle: document.getElementById('pageTitle'),
+    currentUser: document.getElementById('currentUser'),
     logoutBtn: document.getElementById('logoutBtn'),
+
+    accountUsername: document.getElementById('accountUsername'),
+    changePasswordForm: document.getElementById('changePasswordForm'),
+    currentPassword: document.getElementById('currentPassword'),
+    newPassword: document.getElementById('newPassword'),
+    changePasswordMsg: document.getElementById('changePasswordMsg'),
 
     prevMonth: document.getElementById('prevMonth'),
     nextMonth: document.getElementById('nextMonth'),
@@ -96,10 +104,15 @@
 
   // ------------------------------------------------------------ auth ----
 
+  function setCurrentUser(username) {
+    els.currentUser.textContent = username;
+    els.accountUsername.textContent = username;
+  }
+
   function showLogin() {
     els.loginView.hidden = false;
     els.appView.hidden = true;
-    els.loginPassword.focus();
+    els.loginUsername.focus();
   }
 
   async function showApp() {
@@ -113,10 +126,11 @@
     evt.preventDefault();
     els.loginError.hidden = true;
     try {
-      await api('/api/login', {
+      const res = await api('/api/login', {
         method: 'POST',
-        body: JSON.stringify({ password: els.loginPassword.value }),
+        body: JSON.stringify({ username: els.loginUsername.value, password: els.loginPassword.value }),
       });
+      setCurrentUser(res.username);
       els.loginPassword.value = '';
       await showApp();
     } catch (err) {
@@ -128,6 +142,28 @@
   els.logoutBtn.addEventListener('click', async () => {
     try { await api('/api/logout', { method: 'POST' }); } catch { /* ignore */ }
     showLogin();
+  });
+
+  els.changePasswordForm.addEventListener('submit', async (evt) => {
+    evt.preventDefault();
+    els.changePasswordMsg.hidden = true;
+    try {
+      await api('/api/change-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          current_password: els.currentPassword.value,
+          new_password: els.newPassword.value,
+        }),
+      });
+      els.changePasswordForm.reset();
+      els.changePasswordMsg.textContent = 'Password changed.';
+      els.changePasswordMsg.className = 'change-password-msg success';
+      els.changePasswordMsg.hidden = false;
+    } catch (err) {
+      els.changePasswordMsg.textContent = err.message || 'Could not change password';
+      els.changePasswordMsg.className = 'change-password-msg error';
+      els.changePasswordMsg.hidden = false;
+    }
   });
 
   // -------------------------------------------------------------- tabs ----
@@ -536,7 +572,7 @@
         <button class="feedback-check-btn" data-id="${item.id}" aria-label="Toggle resolved" type="button">✓</button>
         <div class="feedback-main">
           <div class="feedback-text">${FEEDBACK_ICON[item.kind]} ${escapeHtml(item.text)}</div>
-          <div class="feedback-meta">${formatRelativeTime(item.created_at)}</div>
+          <div class="feedback-meta">${item.username ? `${escapeHtml(item.username)} · ` : ''}${formatRelativeTime(item.created_at)}</div>
         </div>
         <button class="feedback-delete-btn" data-id="${item.id}" aria-label="Delete" type="button">×</button>
       </div>`;
@@ -613,7 +649,8 @@
 
   (async function init() {
     try {
-      await api('/api/me');
+      const res = await api('/api/me');
+      setCurrentUser(res.username);
       await showApp();
     } catch {
       showLogin();
