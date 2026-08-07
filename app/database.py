@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS expenses (
     amount REAL NOT NULL CHECK(amount > 0),
     description TEXT NOT NULL,
     category TEXT NOT NULL,
+    location TEXT,
     date TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -42,6 +43,14 @@ CREATE TABLE IF NOT EXISTS feedback (
     text TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','done')),
     created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS custom_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(user_id, name)
 );
 """
 
@@ -111,6 +120,12 @@ def _migrate_single_user_data(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_add_expense_location(conn: sqlite3.Connection) -> None:
+    if _table_exists(conn, "expenses") and "location" not in _columns(conn, "expenses"):
+        conn.execute("ALTER TABLE expenses ADD COLUMN location TEXT")
+        conn.commit()
+
+
 def init_db() -> None:
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
     conn = get_connection()
@@ -120,6 +135,7 @@ def init_db() -> None:
         _migrate_single_user_data(conn)
         conn.executescript(SCHEMA)
         conn.commit()
+        _migrate_add_expense_location(conn)
     finally:
         conn.close()
 

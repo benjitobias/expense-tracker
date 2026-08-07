@@ -9,6 +9,7 @@ from . import analytics, auth, database
 from .models import (
     CATEGORIES,
     BudgetIn,
+    CategoryIn,
     ChangePasswordIn,
     ExpenseIn,
     ExpenseOut,
@@ -17,6 +18,15 @@ from .models import (
     FeedbackStatusIn,
     LoginIn,
 )
+
+
+def _user_categories(db: sqlite3.Connection, user_id: int) -> set[str]:
+    custom = {
+        r["name"] for r in db.execute(
+            "SELECT name FROM custom_categories WHERE user_id = ?", (user_id,)
+        ).fetchall()
+    }
+    return set(CATEGORIES) | custom
 
 
 @asynccontextmanager
@@ -122,10 +132,16 @@ def create_expense(
     user: auth.SessionUser = Depends(auth.require_auth),
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
+    if payload.category not in _user_categories(db, user.id):
+        raise HTTPException(status_code=400, detail="Unknown category")
     created_at = datetime.utcnow().isoformat()
     cur = db.execute(
-        "INSERT INTO expenses (user_id, amount, description, category, date, created_at) VALUES (?,?,?,?,?,?)",
-        (user.id, payload.amount, payload.description, payload.category, payload.date.isoformat(), created_at),
+        "INSERT INTO expenses (user_id, amount, description, category, location, date, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (
+            user.id, payload.amount, payload.description, payload.category,
+            payload.location, payload.date.isoformat(), created_at,
+        ),
     )
     db.commit()
     row = db.execute("SELECT * FROM expenses WHERE id = ?", (cur.lastrowid,)).fetchone()
@@ -144,9 +160,14 @@ def update_expense(
     ).fetchone()
     if not existing:
         raise HTTPException(status_code=404, detail="Expense not found")
+    if payload.category not in _user_categories(db, user.id):
+        raise HTTPException(status_code=400, detail="Unknown category")
     db.execute(
-        "UPDATE expenses SET amount=?, description=?, category=?, date=? WHERE id=?",
-        (payload.amount, payload.description, payload.category, payload.date.isoformat(), expense_id),
+        "UPDATE expenses SET amount=?, description=?, category=?, location=?, date=? WHERE id=?",
+        (
+            payload.amount, payload.description, payload.category,
+            payload.location, payload.date.isoformat(), expense_id,
+        ),
     )
     db.commit()
     row = db.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
@@ -184,7 +205,7 @@ def set_budget(
     user: auth.SessionUser = Depends(auth.require_auth),
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
-    if category not in CATEGORIES:
+    if category not in _user_categories(db, user.id):
         raise HTTPException(status_code=400, detail="Unknown category")
     db.execute(
         "INSERT INTO budgets (user_id, category, monthly_limit) VALUES (?, ?, ?) "
@@ -204,6 +225,51 @@ def delete_budget(
     db.execute("DELETE FROM budgets WHERE category = ? AND user_id = ?", (category, user.id))
     db.commit()
     return Response(status_code=204)
+
+
+# ----------------------------------------------------------- categories ----
+
+@app.get("/api/categories")
+def list_categories(
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    custom = [
+        r["name"] for r in db.execute(
+            "SELECT name FROM custom_categories WHERE user_id = ? ORDER BY name", (user.id,)
+        ).fetchall()
+    ]
+    return {"builtin": CATEGORIES, "custom": custom}
+
+
+@app.post("/api/categories")
+def create_category(
+    payload: CategoryIn,
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Category name is required")
+
+    # Case-insensitively fold into an existing builtin or custom category
+    # rather than creating a near-duplicate, so "food" reuses "Food".
+    for builtin in CATEGORIES:
+        if builtin.lower() == name.lower():
+            return {"name": builtin}
+    existing = db.execute(
+        "SELECT name FROM custom_categories WHERE user_id = ? AND lower(name) = lower(?)",
+        (user.id, name),
+    ).fetchone()
+    if existing:
+        return {"name": existing["name"]}
+
+    db.execute(
+        "INSERT INTO custom_categories (user_id, name, created_at) VALUES (?, ?, ?)",
+        (user.id, name, datetime.utcnow().isoformat()),
+    )
+    db.commit()
+    return {"name": name}
 
 
 # ----------------------------------------------------------- analytics ----

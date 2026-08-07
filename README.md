@@ -112,6 +112,12 @@ the legacy single-password → multi-user migration path.
 - There's no admin UI for managing accounts — new users are provisioned by
   adding them to `USERS` and redeploying; passwords are changed self-service
   from the in-app Account section (Feedback tab).
-- Categories are a fixed list (Food, Transport, Shopping, Entertainment,
-  Health, Housing, Utilities, Other) rather than user-defined, to keep the
-  add-expense form and charts simple.
+- Categories start from a fixed list (Food, Transport, Shopping,
+  Entertainment, Health, Housing, Utilities, Other) but each account can add
+  its own on the fly from the "+ Add new category" option in the add-expense
+  form. Custom categories are private per account (like expenses/budgets),
+  can be budgeted just like the built-ins, and there's no way to rename or
+  remove one once added (add a fresh one and stop using the old one instead).
+- Expenses can optionally record where the purchase was made (a free-text
+  location field); it's not used in any charts or filters yet, just shown
+  alongside the category in the expense list.

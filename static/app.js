@@ -9,6 +9,11 @@
     Utilities:     { icon: '💡', color: '--cat-utilities' },
     Other:         { icon: '📦', color: '--cat-other' },
   };
+  const CUSTOM_CATEGORY_META = { icon: '🏷️', color: '--cat-custom' };
+  const ADD_CATEGORY_VALUE = '__add__';
+
+  let customCategories = [];
+  let lastCategoryValue = 'Food';
 
   const MONTH_NAMES = ['January','February','March','April','May','June',
     'July','August','September','October','November','December'];
@@ -39,6 +44,7 @@
     form: document.getElementById('expenseForm'),
     amount: document.getElementById('amount'),
     description: document.getElementById('description'),
+    location: document.getElementById('location'),
     category: document.getElementById('category'),
     date: document.getElementById('date'),
     emptyState: document.getElementById('emptyState'),
@@ -119,7 +125,7 @@
     els.loginView.hidden = true;
     els.appView.hidden = false;
     setActiveTab('home');
-    await loadHome();
+    await Promise.all([loadCategories(), loadHome()]);
   }
 
   els.loginForm.addEventListener('submit', async (evt) => {
@@ -240,7 +246,7 @@
     const max = rows[0][1];
 
     els.chart.innerHTML = rows.map(([cat, amt]) => {
-      const meta = CATEGORIES[cat] || CATEGORIES.Other;
+      const meta = CATEGORIES[cat] || CUSTOM_CATEGORY_META;
       const pct = Math.round((amt / max) * 100);
       return `
         <div class="chart-row">
@@ -271,13 +277,13 @@
       const label = formatDay(day);
 
       const rows = items.map(e => {
-        const meta = CATEGORIES[e.category] || CATEGORIES.Other;
+        const meta = CATEGORIES[e.category] || CUSTOM_CATEGORY_META;
         return `
           <div class="expense-row" data-id="${e.id}">
             <span class="cat-dot" style="background:var(${meta.color})"></span>
             <div class="expense-main">
               <div class="expense-desc">${escapeHtml(e.description)}</div>
-              <div class="expense-cat">${meta.icon} ${e.category}</div>
+              <div class="expense-cat">${meta.icon} ${e.category}${e.location ? ` · ${escapeHtml(e.location)}` : ''}</div>
             </div>
             <span class="expense-amount">${currency(e.amount)}</span>
             <button class="delete-btn" data-id="${e.id}" aria-label="Delete expense" type="button">×</button>
@@ -312,6 +318,7 @@
     const payload = {
       amount,
       description: els.description.value.trim() || 'Expense',
+      location: els.location.value.trim() || null,
       category: els.category.value,
       date: els.date.value,
     };
@@ -326,6 +333,7 @@
     const enteredDate = els.date.value;
     els.form.reset();
     els.date.value = enteredDate;
+    lastCategoryValue = els.category.value;
 
     const [y, m] = enteredDate.split('-').map(Number);
     viewDate = new Date(y, m - 1, 1);
@@ -345,6 +353,54 @@
       return;
     }
     await loadHome();
+  });
+
+  // ---------------------------------------------------------- categories ----
+
+  async function loadCategories() {
+    const res = await api('/api/categories');
+    customCategories = res.custom;
+    populateCategorySelect(lastCategoryValue);
+  }
+
+  function populateCategorySelect(selectValue) {
+    const options = [
+      ...Object.keys(CATEGORIES).map(cat => `<option value="${cat}">${CATEGORIES[cat].icon} ${cat}</option>`),
+      ...customCategories.map(cat => `<option value="${escapeHtml(cat)}">${CUSTOM_CATEGORY_META.icon} ${escapeHtml(cat)}</option>`),
+      `<option value="${ADD_CATEGORY_VALUE}">+ Add new category…</option>`,
+    ];
+    els.category.innerHTML = options.join('');
+    const hasValue = [...els.category.options].some(o => o.value === selectValue);
+    els.category.value = hasValue ? selectValue : els.category.options[0].value;
+    lastCategoryValue = els.category.value;
+  }
+
+  els.category.addEventListener('change', async () => {
+    if (els.category.value !== ADD_CATEGORY_VALUE) {
+      lastCategoryValue = els.category.value;
+      return;
+    }
+
+    const name = (window.prompt('New category name:') || '').trim();
+    if (!name) {
+      populateCategorySelect(lastCategoryValue);
+      return;
+    }
+
+    let created;
+    try {
+      created = await api('/api/categories', { method: 'POST', body: JSON.stringify({ name }) });
+    } catch (err) {
+      alert(err.message);
+      populateCategorySelect(lastCategoryValue);
+      return;
+    }
+
+    if (!CATEGORIES[created.name] && !customCategories.includes(created.name)) {
+      customCategories.push(created.name);
+      customCategories.sort((a, b) => a.localeCompare(b));
+    }
+    populateCategorySelect(created.name);
   });
 
   els.prevMonth.addEventListener('click', async () => {
@@ -485,8 +541,8 @@
   function renderBudgets(budgets, statusRows) {
     const statusByCategory = Object.fromEntries(statusRows.map(r => [r.category, r]));
 
-    els.budgetList.innerHTML = Object.keys(CATEGORIES).map(cat => {
-      const meta = CATEGORIES[cat];
+    els.budgetList.innerHTML = [...Object.keys(CATEGORIES), ...customCategories].map(cat => {
+      const meta = CATEGORIES[cat] || CUSTOM_CATEGORY_META;
       const limit = budgets[cat];
       const hasLimit = limit !== undefined;
       const row = statusByCategory[cat];

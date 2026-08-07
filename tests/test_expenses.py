@@ -65,9 +65,33 @@ def test_negative_amount_rejected(client, alice):
     assert resp.status_code == 422
 
 
-def test_unknown_category_rejected(client, alice):
+def test_unregistered_category_rejected(client, alice):
     resp = create_expense(client, alice, category="Vacation")
-    assert resp.status_code == 422
+    assert resp.status_code == 400
+
+
+def test_location_is_optional(client, alice):
+    resp = create_expense(client, alice)
+    assert resp.status_code == 201
+    assert resp.json()["location"] is None
+
+
+def test_location_is_stored(client, alice):
+    resp = create_expense(client, alice, location="Trader Joe's")
+    assert resp.status_code == 201
+    assert resp.json()["location"] == "Trader Joe's"
+
+    listing = client.get("/api/expenses?month=2026-08", headers=alice).json()
+    assert listing[0]["location"] == "Trader Joe's"
+
+
+def test_custom_category_usable_after_registration(client, alice):
+    created = client.post("/api/categories", headers=alice, json={"name": "Pets"}).json()
+    assert created["name"] == "Pets"
+
+    resp = create_expense(client, alice, category="Pets")
+    assert resp.status_code == 201
+    assert resp.json()["category"] == "Pets"
 
 
 def test_expenses_require_authentication(client):

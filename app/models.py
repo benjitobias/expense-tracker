@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# Categories every account starts with. Users can add more of their own
+# (stored in the custom_categories table) via POST /api/categories.
 CATEGORIES = [
     "Food",
     "Transport",
@@ -14,16 +16,12 @@ CATEGORIES = [
     "Other",
 ]
 
-Category = Literal[
-    "Food", "Transport", "Shopping", "Entertainment",
-    "Health", "Housing", "Utilities", "Other",
-]
-
 
 class ExpenseIn(BaseModel):
     amount: float = Field(gt=0, le=1_000_000)
     description: str = Field(min_length=1, max_length=200)
-    category: Category
+    category: str = Field(min_length=1, max_length=40)
+    location: str | None = Field(default=None, max_length=200)
     date: date_type
 
 
@@ -38,6 +36,10 @@ class BudgetIn(BaseModel):
 
 class BudgetOut(BudgetIn):
     category: str
+
+
+class CategoryIn(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
 
 
 class LoginIn(BaseModel):
