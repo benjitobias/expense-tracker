@@ -38,10 +38,41 @@
       <p id="currentUser" class="current-user"></p>
     </div>
     <div class="topbar-actions">
+      <button id="sessionBadge" class="session-badge" type="button">🏠 Standard</button>
       <button id="themeToggle" class="icon-btn" aria-label="Change theme" type="button">🌗</button>
       <button id="logoutBtn" class="icon-btn" aria-label="Log out" type="button">⎋</button>
     </div>
   </header>
+
+  <div id="sessionPanel" class="session-panel" hidden>
+    <div class="session-panel-list" id="sessionPanelList"></div>
+    <details id="newSessionDetails" class="new-session-details">
+      <summary>+ Start a new session</summary>
+      <div class="new-session-body">
+        <input id="newSessionName" type="text" placeholder="Trip name (e.g. Japan)" maxlength="60" />
+        <select id="newSessionCurrency">
+          <option value="USD">🇺🇸 USD</option>
+          <option value="EUR">🇪🇺 EUR</option>
+          <option value="GBP">🇬🇧 GBP</option>
+          <option value="JPY">🇯🇵 JPY</option>
+          <option value="THB">🇹🇭 THB</option>
+          <option value="AED">🇦🇪 AED</option>
+          <option value="TRY">🇹🇷 TRY</option>
+          <option value="INR">🇮🇳 INR</option>
+          <option value="CHF">🇨🇭 CHF</option>
+          <option value="AUD">🇦🇺 AUD</option>
+          <option value="CAD">🇨🇦 CAD</option>
+          <option value="MXN">🇲🇽 MXN</option>
+          <option value="IDR">🇮🇩 IDR</option>
+          <option value="VND">🇻🇳 VND</option>
+          <option value="EGP">🇪🇬 EGP</option>
+          <option value="ILS">🇮🇱 ILS</option>
+          <option value="__add__">+ Other currency…</option>
+        </select>
+        <button type="button" id="createSessionBtn" class="add-btn">Start</button>
+      </div>
+    </details>
+  </div>
 
   <!-- ---------------- Home tab ---------------- -->
   <main id="homeTab" class="tab-panel">
@@ -61,7 +92,7 @@
       <h2 id="formTitle" class="card-title" hidden>Edit expense</h2>
       <form id="expenseForm" autocomplete="off">
         <div class="row row-amount">
-          <span class="currency">₪</span>
+          <span class="currency" id="amountCurrency">₪</span>
           <input id="amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" required />
         </div>
         <input id="description" type="text" placeholder="What was it for?" required maxlength="200" />

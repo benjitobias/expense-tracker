@@ -1,7 +1,7 @@
 from datetime import date as date_type
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Categories every account starts with. Users can add more of their own
 # (stored in the custom_categories table) via POST /api/categories.
@@ -71,6 +71,30 @@ class FeedbackIn(BaseModel):
 
 class FeedbackStatusIn(BaseModel):
     status: Literal["open", "done"]
+
+
+class SessionIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    currency: str = Field(min_length=3, max_length=3)
+
+    @field_validator("currency")
+    @classmethod
+    def _normalize_currency(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not v.isalpha():
+            raise ValueError("Currency must be a 3-letter code, e.g. USD")
+        return v
+
+
+class SessionOut(BaseModel):
+    id: int
+    name: str
+    currency: str
+    status: Literal["open", "closed"]
+    is_standard: bool
+    is_active: bool
+    created_at: str
+    closed_at: str | None = None
 
 
 class FeedbackOut(BaseModel):

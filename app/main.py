@@ -25,6 +25,8 @@ from .models import (
     FeedbackStatusIn,
     LoginIn,
     PhotoOut,
+    SessionIn,
+    SessionOut,
     ThemeIn,
 )
 
@@ -55,6 +57,30 @@ def _user_theme(db: sqlite3.Connection, user_id: int) -> str:
     return row["theme"]
 
 
+def _active_session(db: sqlite3.Connection, user_id: int) -> sqlite3.Row:
+    row = db.execute(
+        "SELECT sessions.* FROM sessions JOIN users ON users.active_session_id = sessions.id "
+        "WHERE users.id = ?",
+        (user_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=500, detail="No active session")
+    return row
+
+
+def _session_out(row: sqlite3.Row, active_id: int) -> dict:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "currency": row["currency"],
+        "status": row["status"],
+        "is_standard": bool(row["is_standard"]),
+        "is_active": row["id"] == active_id,
+        "created_at": row["created_at"],
+        "closed_at": row["closed_at"],
+    }
+
+
 def _photos_for_expenses(db: sqlite3.Connection, expense_ids: list[int]) -> dict[int, list[dict]]:
     if not expense_ids:
         return {}
@@ -83,6 +109,7 @@ async def lifespan(app: FastAPI):
     conn = database.get_connection()
     try:
         auth.ensure_users_seeded(conn)
+        database.ensure_sessions(conn)
     finally:
         conn.close()
     yield
@@ -173,6 +200,101 @@ def set_theme(
     return {"theme": payload.theme}
 
 
+# ------------------------------------------------------------- sessions ----
+# A "session" scopes expenses/budgets/analytics/export to one currency and
+# one pool of spending — the household's ongoing "Standard" session (always
+# present, can't be closed) plus any number of trip sessions you switch into.
+# Whichever session is active is what every other endpoint below reads from
+# and writes to; there's no per-request session override.
+
+@app.get("/api/sessions", response_model=list[SessionOut])
+def list_sessions(
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    active = _active_session(db, user.id)
+    rows = db.execute(
+        "SELECT * FROM sessions WHERE user_id = ? ORDER BY is_standard DESC, created_at DESC",
+        (user.id,),
+    ).fetchall()
+    return [_session_out(r, active["id"]) for r in rows]
+
+
+@app.post("/api/sessions", response_model=SessionOut, status_code=201)
+def create_session(
+    payload: SessionIn,
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    created_at = datetime.utcnow().isoformat()
+    cur = db.execute(
+        "INSERT INTO sessions (user_id, name, currency, status, is_standard, created_at) "
+        "VALUES (?, ?, ?, 'open', 0, ?)",
+        (user.id, payload.name, payload.currency, created_at),
+    )
+    db.execute("UPDATE users SET active_session_id = ? WHERE id = ?", (cur.lastrowid, user.id))
+    db.commit()
+    row = db.execute("SELECT * FROM sessions WHERE id = ?", (cur.lastrowid,)).fetchone()
+    return _session_out(row, cur.lastrowid)
+
+
+@app.post("/api/sessions/{session_id}/activate", response_model=SessionOut)
+def activate_session(
+    session_id: int,
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    row = db.execute(
+        "SELECT * FROM sessions WHERE id = ? AND user_id = ?", (session_id, user.id)
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    db.execute("UPDATE users SET active_session_id = ? WHERE id = ?", (session_id, user.id))
+    db.commit()
+    return _session_out(row, session_id)
+
+
+@app.post("/api/sessions/{session_id}/close", response_model=SessionOut)
+def close_session(
+    session_id: int,
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    row = db.execute(
+        "SELECT * FROM sessions WHERE id = ? AND user_id = ?", (session_id, user.id)
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if row["is_standard"]:
+        raise HTTPException(status_code=400, detail="The Standard session can't be closed")
+    db.execute(
+        "UPDATE sessions SET status = 'closed', closed_at = ? WHERE id = ?",
+        (datetime.utcnow().isoformat(), session_id),
+    )
+    db.commit()
+    active = _active_session(db, user.id)
+    row = db.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+    return _session_out(row, active["id"])
+
+
+@app.post("/api/sessions/{session_id}/reopen", response_model=SessionOut)
+def reopen_session(
+    session_id: int,
+    user: auth.SessionUser = Depends(auth.require_auth),
+    db: sqlite3.Connection = Depends(database.db_dependency),
+):
+    row = db.execute(
+        "SELECT * FROM sessions WHERE id = ? AND user_id = ?", (session_id, user.id)
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    db.execute("UPDATE sessions SET status = 'open', closed_at = NULL WHERE id = ?", (session_id,))
+    db.commit()
+    active = _active_session(db, user.id)
+    row = db.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+    return _session_out(row, active["id"])
+
+
 # ------------------------------------------------------------ expenses ----
 
 @app.get("/api/expenses", response_model=list[ExpenseOut])
@@ -181,9 +303,11 @@ def list_expenses(
     user: auth.SessionUser = Depends(auth.require_auth),
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
+    session = _active_session(db, user.id)
     rows = db.execute(
-        "SELECT * FROM expenses WHERE user_id = ? AND date LIKE ? ORDER BY date DESC, id DESC",
-        (user.id, f"{month}%"),
+        "SELECT * FROM expenses WHERE user_id = ? AND session_id = ? AND date LIKE ? "
+        "ORDER BY date DESC, id DESC",
+        (user.id, session["id"], f"{month}%"),
     ).fetchall()
     photos_by_expense = _photos_for_expenses(db, [r["id"] for r in rows])
     return [{**dict(r), "photos": photos_by_expense.get(r["id"], [])} for r in rows]
@@ -201,12 +325,13 @@ def search_expenses(
     term = q.strip()
     if not term:
         return []
+    session = _active_session(db, user.id)
     like = f"%{term}%"
     rows = db.execute(
-        "SELECT * FROM expenses WHERE user_id = ? AND ("
+        "SELECT * FROM expenses WHERE user_id = ? AND session_id = ? AND ("
         "description LIKE ? OR note LIKE ? OR location LIKE ? OR category LIKE ? OR payment_method LIKE ?"
         ") ORDER BY date DESC, id DESC LIMIT ?",
-        (user.id, like, like, like, like, like, SEARCH_RESULT_LIMIT),
+        (user.id, session["id"], like, like, like, like, like, SEARCH_RESULT_LIMIT),
     ).fetchall()
     photos_by_expense = _photos_for_expenses(db, [r["id"] for r in rows])
     return [{**dict(r), "photos": photos_by_expense.get(r["id"], [])} for r in rows]
@@ -220,13 +345,16 @@ def create_expense(
 ):
     if payload.category not in _user_categories(db, user.id):
         raise HTTPException(status_code=400, detail="Unknown category")
+    session = _active_session(db, user.id)
+    if session["status"] != "open":
+        raise HTTPException(status_code=400, detail="This session is closed — reopen it to add expenses")
     created_at = datetime.utcnow().isoformat()
     cur = db.execute(
         "INSERT INTO expenses "
-        "(user_id, amount, description, category, location, note, payment_method, date, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
+        "(user_id, session_id, amount, description, category, location, note, payment_method, date, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (
-            user.id, payload.amount, payload.description, payload.category,
+            user.id, session["id"], payload.amount, payload.description, payload.category,
             payload.location, payload.note, payload.payment_method, payload.date.isoformat(), created_at,
         ),
     )
@@ -382,7 +510,10 @@ def list_budgets(
     user: auth.SessionUser = Depends(auth.require_auth),
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
-    rows = db.execute("SELECT * FROM budgets WHERE user_id = ?", (user.id,)).fetchall()
+    session = _active_session(db, user.id)
+    rows = db.execute(
+        "SELECT * FROM budgets WHERE user_id = ? AND session_id = ?", (user.id, session["id"])
+    ).fetchall()
     return {r["category"]: r["monthly_limit"] for r in rows}
 
 
@@ -395,11 +526,20 @@ def set_budget(
 ):
     if category not in _user_categories(db, user.id):
         raise HTTPException(status_code=400, detail="Unknown category")
-    db.execute(
-        "INSERT INTO budgets (user_id, category, monthly_limit) VALUES (?, ?, ?) "
-        "ON CONFLICT(user_id, category) DO UPDATE SET monthly_limit = excluded.monthly_limit",
-        (user.id, category, payload.monthly_limit),
-    )
+    session = _active_session(db, user.id)
+    existing = db.execute(
+        "SELECT 1 FROM budgets WHERE session_id = ? AND category = ?", (session["id"], category)
+    ).fetchone()
+    if existing:
+        db.execute(
+            "UPDATE budgets SET monthly_limit = ? WHERE session_id = ? AND category = ?",
+            (payload.monthly_limit, session["id"], category),
+        )
+    else:
+        db.execute(
+            "INSERT INTO budgets (user_id, session_id, category, monthly_limit) VALUES (?, ?, ?, ?)",
+            (user.id, session["id"], category, payload.monthly_limit),
+        )
     db.commit()
     return {"category": category, "monthly_limit": payload.monthly_limit}
 
@@ -410,7 +550,10 @@ def delete_budget(
     user: auth.SessionUser = Depends(auth.require_auth),
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
-    db.execute("DELETE FROM budgets WHERE category = ? AND user_id = ?", (category, user.id))
+    session = _active_session(db, user.id)
+    db.execute(
+        "DELETE FROM budgets WHERE category = ? AND session_id = ?", (category, session["id"])
+    )
     db.commit()
     return Response(status_code=204)
 
@@ -468,7 +611,8 @@ def trends(
     user: auth.SessionUser = Depends(auth.require_auth),
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
-    return analytics.monthly_trends(db, months, user.id)
+    session = _active_session(db, user.id)
+    return analytics.monthly_trends(db, months, session["id"])
 
 
 @app.get("/api/analytics/patterns")
@@ -477,7 +621,8 @@ def patterns(
     user: auth.SessionUser = Depends(auth.require_auth),
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
-    return analytics.day_of_week_patterns(db, months, user.id)
+    session = _active_session(db, user.id)
+    return analytics.day_of_week_patterns(db, months, session["id"])
 
 
 @app.get("/api/analytics/daily")
@@ -486,7 +631,8 @@ def daily(
     user: auth.SessionUser = Depends(auth.require_auth),
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
-    return analytics.daily_totals(db, month, user.id)
+    session = _active_session(db, user.id)
+    return analytics.daily_totals(db, month, session["id"])
 
 
 @app.get("/api/analytics/budget-status")
@@ -495,7 +641,8 @@ def budget_status_endpoint(
     user: auth.SessionUser = Depends(auth.require_auth),
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
-    return analytics.budget_status(db, month, user.id)
+    session = _active_session(db, user.id)
+    return analytics.budget_status(db, month, session["id"])
 
 
 # --------------------------------------------------------------- export ----
@@ -505,17 +652,18 @@ def export_expenses(
     user: auth.SessionUser = Depends(auth.require_auth),
     db: sqlite3.Connection = Depends(database.db_dependency),
 ):
+    session = _active_session(db, user.id)
     rows = db.execute(
         "SELECT date, category, description, location, amount FROM expenses "
-        "WHERE user_id = ? ORDER BY date, id",
-        (user.id,),
+        "WHERE user_id = ? AND session_id = ? ORDER BY date, id",
+        (user.id, session["id"]),
     ).fetchall()
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Expenses"
 
-    headers = ["Date", "Category", "Description", "Location", "Amount (ILS)"]
+    headers = ["Date", "Category", "Description", "Location", f"Amount ({session['currency']})"]
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True)

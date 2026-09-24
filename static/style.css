@@ -238,6 +238,127 @@ body {
 .icon-btn:hover { background: var(--gridline); }
 .icon-btn:active { transform: translateY(1px); }
 
+/* ---------------- Sessions ---------------- */
+
+.session-badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 12px;
+  height: 32px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.session-badge:hover { background: var(--gridline); }
+
+.session-panel {
+  position: fixed;
+  top: 64px;
+  left: 16px;
+  right: 16px;
+  max-width: 448px;
+  margin: 0 auto;
+  z-index: 20;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  padding: 8px;
+}
+
+.session-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.session-row:hover { background: var(--surface-2); }
+.session-row.active { background: var(--status-good-wash); font-weight: 600; }
+.session-row.closed { opacity: 0.6; }
+
+.session-row-main {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-action-btn {
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.session-action-btn:hover { color: var(--text-primary); }
+
+.new-session-details {
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.new-session-details summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px 10px;
+  user-select: none;
+}
+
+.new-session-details summary:hover { color: var(--text-primary); }
+
+.new-session-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 10px 8px;
+}
+
+.new-session-body input,
+.new-session-body select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 14px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.new-session-body button {
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--text-primary);
+  color: var(--surface-1);
+  cursor: pointer;
+}
+
+.new-session-body button:hover { opacity: 0.9; }
+
 /* ---------------- Tab bar ---------------- */
 
 .tab-bar {

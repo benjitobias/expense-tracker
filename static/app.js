@@ -20,6 +20,14 @@
   let paymentMethod = 'Card';
   let searchQuery = '';
   let searchDebounceTimer = null;
+  let sessions = [];
+  let activeSession = null;
+
+  const CURRENCY_SYMBOL = {
+    ILS: '₪', USD: '$', EUR: '€', GBP: '£', JPY: '¥', THB: '฿', AED: 'د.إ',
+    TRY: '₺', INR: '₹', CHF: 'CHF', AUD: 'A$', CAD: 'C$', MXN: 'MX$',
+    IDR: 'Rp', VND: '₫', EGP: 'E£',
+  };
 
   const THEME_ORDER = ['system', 'light', 'dark'];
   const THEME_ICON = { system: '🌗', light: '☀️', dark: '🌙' };
@@ -38,6 +46,14 @@
     currentUser: document.getElementById('currentUser'),
     themeToggle: document.getElementById('themeToggle'),
     logoutBtn: document.getElementById('logoutBtn'),
+
+    sessionBadge: document.getElementById('sessionBadge'),
+    sessionPanel: document.getElementById('sessionPanel'),
+    sessionPanelList: document.getElementById('sessionPanelList'),
+    newSessionDetails: document.getElementById('newSessionDetails'),
+    newSessionName: document.getElementById('newSessionName'),
+    newSessionCurrency: document.getElementById('newSessionCurrency'),
+    createSessionBtn: document.getElementById('createSessionBtn'),
 
     accountUsername: document.getElementById('accountUsername'),
     changePasswordForm: document.getElementById('changePasswordForm'),
@@ -59,6 +75,7 @@
     chart: document.getElementById('chart'),
     formTitle: document.getElementById('formTitle'),
     form: document.getElementById('expenseForm'),
+    amountCurrency: document.getElementById('amountCurrency'),
     amount: document.getElementById('amount'),
     description: document.getElementById('description'),
     location: document.getElementById('location'),
@@ -121,7 +138,12 @@
   }
 
   function currency(n) {
-    return n.toLocaleString('he-IL', { style: 'currency', currency: 'ILS' });
+    const code = activeSession ? activeSession.currency : 'ILS';
+    try {
+      return n.toLocaleString(undefined, { style: 'currency', currency: code });
+    } catch {
+      return `${CURRENCY_SYMBOL[code] || code} ${n.toFixed(2)}`;
+    }
   }
 
   function monthKey(date) {
@@ -178,6 +200,134 @@
     }
   });
 
+  // -------------------------------------------------------- sessions ----
+
+  function renderSessionBadge() {
+    if (!activeSession) return;
+    els.amountCurrency.textContent = CURRENCY_SYMBOL[activeSession.currency] || activeSession.currency;
+    const icon = activeSession.is_standard ? '🏠' : (activeSession.status === 'closed' ? '📦' : '🏖');
+    els.sessionBadge.textContent = activeSession.is_standard
+      ? `${icon} Standard`
+      : `${icon} ${activeSession.name} · ${activeSession.currency}`;
+  }
+
+  async function loadSessions() {
+    sessions = await api('/api/sessions');
+    activeSession = sessions.find(s => s.is_active) || null;
+    renderSessionBadge();
+  }
+
+  function renderSessionPanel() {
+    els.sessionPanelList.innerHTML = sessions.map(s => {
+      const icon = s.is_standard ? '🏠' : (s.status === 'closed' ? '📦' : '🏖');
+      const actionBtn = s.is_standard
+        ? ''
+        : s.status === 'open'
+          ? `<button type="button" class="session-action-btn" data-action="close" data-id="${s.id}">Close</button>`
+          : `<button type="button" class="session-action-btn" data-action="reopen" data-id="${s.id}">Reopen</button>`;
+      return `
+        <div class="session-row ${s.is_active ? 'active' : ''} ${s.status === 'closed' ? 'closed' : ''}" data-id="${s.id}">
+          <span class="session-row-main">${icon} ${escapeHtml(s.name)} <span class="muted">${s.currency}</span></span>
+          ${actionBtn}
+        </div>`;
+    }).join('');
+  }
+
+  async function switchedSessionRefresh() {
+    renderSessionBadge();
+    viewDate = new Date();
+    viewDate.setDate(1);
+    searchQuery = '';
+    els.searchInput.value = '';
+    showMonthView();
+    await Promise.all([loadCategories(), loadHome()]);
+    const activeTabBtn = document.querySelector('.tab-btn.active');
+    const tab = activeTabBtn ? activeTabBtn.dataset.tab : 'home';
+    if (tab === 'insights') await loadInsights();
+    if (tab === 'budgets') await loadBudgets();
+  }
+
+  els.sessionBadge.addEventListener('click', () => {
+    els.sessionPanel.hidden = !els.sessionPanel.hidden;
+    if (!els.sessionPanel.hidden) renderSessionPanel();
+  });
+
+  document.addEventListener('click', (evt) => {
+    if (els.sessionPanel.hidden) return;
+    if (els.sessionPanel.contains(evt.target) || evt.target === els.sessionBadge) return;
+    els.sessionPanel.hidden = true;
+  });
+
+  els.sessionPanelList.addEventListener('click', async (evt) => {
+    const actionBtn = evt.target.closest('.session-action-btn');
+    if (actionBtn) {
+      const id = Number(actionBtn.dataset.id);
+      const action = actionBtn.dataset.action;
+      try {
+        await api(`/api/sessions/${id}/${action}`, { method: 'POST' });
+      } catch (err) {
+        alert(err.message);
+        return;
+      }
+      await loadSessions();
+      renderSessionPanel();
+      return;
+    }
+
+    const row = evt.target.closest('.session-row');
+    if (!row) return;
+    const id = Number(row.dataset.id);
+    if (activeSession && activeSession.id === id) {
+      els.sessionPanel.hidden = true;
+      return;
+    }
+    try {
+      await api(`/api/sessions/${id}/activate`, { method: 'POST' });
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+    await loadSessions();
+    els.sessionPanel.hidden = true;
+    await switchedSessionRefresh();
+  });
+
+  function insertCustomCurrencyOption(code) {
+    if (![...els.newSessionCurrency.options].some(o => o.value === code)) {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = code;
+      els.newSessionCurrency.insertBefore(opt, els.newSessionCurrency.querySelector('option[value="__add__"]'));
+    }
+    return code;
+  }
+
+  els.newSessionCurrency.addEventListener('change', () => {
+    if (els.newSessionCurrency.value !== '__add__') return;
+    const code = (window.prompt('3-letter currency code (e.g. NOK):') || '').trim().toUpperCase();
+    els.newSessionCurrency.value = /^[A-Z]{3}$/.test(code) ? insertCustomCurrencyOption(code) : 'USD';
+  });
+
+  els.createSessionBtn.addEventListener('click', async () => {
+    const name = els.newSessionName.value.trim();
+    const currencyCode = els.newSessionCurrency.value;
+    if (!name || currencyCode === '__add__') {
+      alert('Enter a trip name and pick a currency');
+      return;
+    }
+    try {
+      await api('/api/sessions', { method: 'POST', body: JSON.stringify({ name, currency: currencyCode }) });
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+    els.newSessionName.value = '';
+    els.newSessionDetails.open = false;
+    await loadSessions();
+    els.sessionPanel.hidden = true;
+    await switchedSessionRefresh();
+  });
+
   function showLogin() {
     els.loginView.hidden = false;
     els.appView.hidden = true;
@@ -188,6 +338,7 @@
     els.loginView.hidden = true;
     els.appView.hidden = false;
     setActiveTab('home');
+    await loadSessions();
     await Promise.all([loadCategories(), loadHome()]);
   }
 
@@ -974,7 +1125,7 @@
             <span class="budget-status-label ${status}">${statusText}</span>
           ` : ''}
           <div class="budget-edit">
-            <span class="currency">₪</span>
+            <span class="currency">${CURRENCY_SYMBOL[activeSession ? activeSession.currency : 'ILS'] || (activeSession ? activeSession.currency : 'ILS')}</span>
             <input type="number" min="0" step="1" inputmode="decimal"
                    placeholder="${hasLimit ? limit : 'Set limit'}"
                    data-cat="${cat}" class="budget-input" />

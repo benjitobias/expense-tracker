@@ -36,6 +36,10 @@ other pair from `USERS`).
 - If you put this behind an HTTPS reverse proxy (recommended if reachable
   from outside your home network), also set `-e SECURE_COOKIES=true` so the
   session cookie is marked `Secure`.
+- `DEFAULT_CURRENCY` (default `ILS`) sets the currency of each account's
+  "Standard" session, created automatically on first login. Only affects
+  new accounts/fresh installs — existing accounts keep whatever currency
+  their Standard session already has.
 
 ### Upgrading from the single-password version
 
@@ -96,7 +100,8 @@ Each test gets its own throwaway SQLite file and its own in-memory
 session/lockout state (see `conftest.py`), so tests can run in any order
 without touching `/data` or each other. Coverage: login/lockout/logout,
 self-service password change, expense & budget CRUD plus per-user
-isolation, the three analytics endpoints, the shared feedback board, and
+isolation, the three analytics endpoints, the shared feedback board,
+sessions (creation, switching, close/reopen, per-session isolation), and
 the legacy single-password → multi-user migration path.
 
 ## Notes / known trade-offs
@@ -145,3 +150,15 @@ the legacy single-password → multi-user migration path.
   month), capped at 100 results ordered newest-first. It replaces the
   month view with a flat result list while active; clearing it restores
   normal month browsing.
+- **Sessions** scope expenses, budgets, analytics, and exports to one
+  currency and one pool of spending. Every account has a permanent
+  "Standard" session (currency set by `DEFAULT_CURRENCY`, default `ILS`)
+  that can't be closed or deleted. Tap the session badge in the top bar to
+  switch sessions or start a new one (name + currency) — starting one
+  auto-switches into it, and every expense you log from then on belongs to
+  whichever session is currently active; there's no per-expense currency
+  picker. Closing a session (e.g. once a trip is over) stops it from
+  accepting new expenses but keeps it browsable and reopenable; the
+  Standard session can't be closed. Categories and their icons are shared
+  across all of an account's sessions — only expenses, budgets, and the
+  currency are session-scoped.

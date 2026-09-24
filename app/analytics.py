@@ -20,14 +20,14 @@ def _shift_month(d: date, delta: int) -> date:
     return date(year, month, 1)
 
 
-def monthly_trends(db: sqlite3.Connection, months: int, user_id: int) -> dict:
+def monthly_trends(db: sqlite3.Connection, months: int, session_id: int) -> dict:
     today = date.today().replace(day=1)
     month_keys = [_month_key(_shift_month(today, -i)) for i in range(months - 1, -1, -1)]
     range_start = _shift_month(today, -(months - 1)).isoformat()
 
     rows = db.execute(
-        "SELECT date, category, amount FROM expenses WHERE user_id = ? AND date >= ?",
-        (user_id, range_start),
+        "SELECT date, category, amount FROM expenses WHERE session_id = ? AND date >= ?",
+        (session_id, range_start),
     ).fetchall()
 
     totals = {k: 0.0 for k in month_keys}
@@ -49,13 +49,13 @@ def monthly_trends(db: sqlite3.Connection, months: int, user_id: int) -> dict:
     }
 
 
-def day_of_week_patterns(db: sqlite3.Connection, months: int, user_id: int) -> dict:
+def day_of_week_patterns(db: sqlite3.Connection, months: int, session_id: int) -> dict:
     today = date.today().replace(day=1)
     range_start = _shift_month(today, -(months - 1)).isoformat()
 
     rows = db.execute(
-        "SELECT date, amount FROM expenses WHERE user_id = ? AND date >= ?",
-        (user_id, range_start),
+        "SELECT date, amount FROM expenses WHERE session_id = ? AND date >= ?",
+        (session_id, range_start),
     ).fetchall()
 
     totals = [0.0] * 7
@@ -87,13 +87,13 @@ def day_of_week_patterns(db: sqlite3.Connection, months: int, user_id: int) -> d
     }
 
 
-def daily_totals(db: sqlite3.Connection, month: str, user_id: int) -> dict:
+def daily_totals(db: sqlite3.Connection, month: str, session_id: int) -> dict:
     year, mon = (int(part) for part in month.split("-"))
     days_in_month = calendar.monthrange(year, mon)[1]
 
     rows = db.execute(
-        "SELECT date, amount FROM expenses WHERE user_id = ? AND date LIKE ?",
-        (user_id, f"{month}%"),
+        "SELECT date, amount FROM expenses WHERE session_id = ? AND date LIKE ?",
+        (session_id, f"{month}%"),
     ).fetchall()
 
     totals = [0.0] * days_in_month
@@ -107,14 +107,14 @@ def daily_totals(db: sqlite3.Connection, month: str, user_id: int) -> dict:
     }
 
 
-def budget_status(db: sqlite3.Connection, month: str, user_id: int) -> list[dict]:
+def budget_status(db: sqlite3.Connection, month: str, session_id: int) -> list[dict]:
     budgets = {
         r["category"]: r["monthly_limit"]
-        for r in db.execute("SELECT * FROM budgets WHERE user_id = ?", (user_id,)).fetchall()
+        for r in db.execute("SELECT * FROM budgets WHERE session_id = ?", (session_id,)).fetchall()
     }
     spent_rows = db.execute(
-        "SELECT category, SUM(amount) as total FROM expenses WHERE user_id = ? AND date LIKE ? GROUP BY category",
-        (user_id, f"{month}%"),
+        "SELECT category, SUM(amount) as total FROM expenses WHERE session_id = ? AND date LIKE ? GROUP BY category",
+        (session_id, f"{month}%"),
     ).fetchall()
     spent = {r["category"]: r["total"] for r in spent_rows}
 
